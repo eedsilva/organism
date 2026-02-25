@@ -1,4 +1,4 @@
-import { callLocalBrain } from "../cognition/llm";
+import { callBrain } from "../cognition/llm";
 import { query } from "../state/db";
 
 /**
@@ -16,11 +16,11 @@ import { query } from "../state/db";
  */
 
 const REFLECTION_INTERVALS: Record<string, number> = {
-  dying:      0.5,   // 12 hours
+  dying: 0.5,   // 12 hours
   struggling: 1,     // 24 hours
-  surviving:  3,     // 3 days
-  thriving:   7,     // 7 days
-  unknown:    1,     // default: daily
+  surviving: 3,     // 3 days
+  thriving: 7,     // 7 days
+  unknown: 1,     // default: daily
 };
 
 async function getLastAssessment(): Promise<string> {
@@ -216,7 +216,10 @@ Respond ONLY in valid JSON, no markdown, no explanation:
 }
 `;
 
-  const response = await callLocalBrain(prompt);
+  const response = await callBrain(
+    prompt,
+    "weekly reflection — policy analysis"
+  );
 
   try {
     const clean = response.replace(/```json|```/g, "").trim();

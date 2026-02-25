@@ -1,4 +1,4 @@
-import { callLocalBrain } from "../cognition/llm";
+import { callBrain } from "../cognition/llm";
 import { query } from "../state/db";
 
 /**
@@ -55,7 +55,13 @@ The score must be an integer between 0 and 100. Do not omit it.
 `;
 
   try {
-    const response = await callLocalBrain(prompt);
+    // Use cloud for high-viability scoring (worth the spend); local for routine ones
+    const useCloud = (opportunity.viability_score ?? 0) >= 60;
+    const response = await callBrain(
+      prompt,
+      `planning for high-viability opportunity: ${opportunity.title?.slice(0, 60)}`,
+      !useCloud   // forceLocal if viability is low
+    );
 
     let parsed: any = null;
     let score = 0;

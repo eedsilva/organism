@@ -10,6 +10,7 @@ import { generatePlan } from "./plan";
 import { attemptBuild } from "./build";
 import { runDigest } from "./digest";
 import { runReflect } from "./reflect";
+import { runEvolve } from "./evolve";
 
 async function selfCheck() {
   const diagnostics: Record<string, any> = {};
@@ -41,6 +42,9 @@ export async function runCycle() {
     // 0b. Weekly reflection — once per week, updates policies
     //     Runs before sensing so new weights take effect this cycle
     await runReflect();
+
+    // 0c. Daily self-improvement — reads own code, generates proposals for human review
+    await runEvolve();
 
     // 1. Budget check
     const budgetStatus = await getBudgetStatus();

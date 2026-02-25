@@ -4,8 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "start": "ts-node -r dotenv/config kernel/heartbeat.ts",
+    "talk": "ts-node -r dotenv/config kernel/cli.ts",
+    "telegram": "ts-node -r dotenv/config kernel/telegram.ts",
     "infra:start": "docker compose up -d",
-    "infra:stop": "docker compose down -v"
+    "infra:stop": "docker compose down -v",
+    "db:reset": "docker exec -i organism-postgres psql -U organism -d organism -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' && docker exec -i organism-postgres psql -U organism -d organism < state/schema.sql",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",

@@ -189,31 +189,42 @@ export async function checkPreorderWindows() {
 }
 
 // ── Step 3: Build real product (only after payment confirmed) ────────────────
+//
+// Generates a deployable Next.js micro-SaaS in products/product_<id>/
+// Operator follows DEPLOY.md to push live. Automation comes post-Stripe.
 
 export async function buildProduct(opportunity: any) {
+  const productName = (opportunity.plan?.match(/"product_name"\s*:\s*"([^"]+)"/) ?? [])[1]
+    ?? opportunity.title?.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 24)
+    ?? `product-${opportunity.id}`;
+
   const prompt = `
 You are building a real micro-SaaS product. A customer has already paid $${PREORDER_PRICE}.
-Now build the simplest possible working version.
+Build the simplest working version that delivers the core value.
 
-PRODUCT: ${opportunity.title}
-PLAN: ${opportunity.plan || ""}
+PRODUCT NAME: ${productName}
+PAIN BEING SOLVED: ${opportunity.title}
+CONTEXT: ${opportunity.plan?.slice(0, 1000) || opportunity.raw_text?.slice(0, 800) || ""}
 
-Generate a complete, working Next.js page (single file) that:
-1. Accepts user input for the core use case
-2. Calls an API route to process it (stub the logic with a realistic placeholder)
-3. Displays the output clearly
-4. Has a simple, clean UI using inline Tailwind classes
-
-Also generate:
-- api_route: the Next.js API route code (app/api/process/route.ts)
-- deployment_steps: ordered list of exact commands to deploy on Vercel
-
-Respond ONLY in valid JSON:
+Generate ALL of the following. Respond ONLY in valid JSON, no markdown:
 {
-  "page_code": "...",
-  "api_route_code": "...",
-  "deployment_steps": ["...", "..."]
+  "page_code":          "complete app/page.tsx content",
+  "layout_code":        "complete app/layout.tsx content with proper metadata",
+  "api_route_code":     "complete app/api/process/route.ts content",
+  "tailwind_config":    "complete tailwind.config.ts content",
+  "global_css":         "complete app/globals.css content (minimal Tailwind base)",
+  "package_name":       "${productName}",
+  "description":        "one-line product description for package.json",
+  "tagline":            "one-line problem-first tagline for README"
 }
+
+REQUIREMENTS:
+- page.tsx: beautiful, dark-mode, Tailwind-styled UI. Input form → API call → clear output display.
+- layout.tsx: proper <html>, <head> with title/description meta, body. Clean font (Inter via Google Fonts).
+- api/process/route.ts: POST handler, receives { input }, returns { result }. Stub with realistic placeholder logic.
+- tailwind.config.ts: darkMode 'class', content paths correct for Next.js app router.
+- globals.css: only Tailwind base directives (@tailwind base/components/utilities).
+- All code must be copy-paste runnable — no placeholders like "add your logic here".
 `;
 
   try {
@@ -223,30 +234,144 @@ Respond ONLY in valid JSON:
     try {
       const clean = response.replace(/```json|```/g, "").trim();
       parsed = JSON.parse(clean);
-    } catch { /* store raw */ }
-
-    const folderPath = path.join("products", `product_${opportunity.id}`);
-    if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
-
-    if (parsed?.page_code) {
-      fs.writeFileSync(path.join(folderPath, "page.tsx"), parsed.page_code);
-    }
-    if (parsed?.api_route_code) {
-      fs.writeFileSync(path.join(folderPath, "api_route.ts"), parsed.api_route_code);
-    }
-    if (parsed?.deployment_steps) {
-      fs.writeFileSync(
-        path.join(folderPath, "DEPLOY.md"),
-        `# Deploy Steps\n\n` + parsed.deployment_steps.map((s: string, i: number) => `${i + 1}. ${s}`).join("\n")
+    } catch {
+      await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
+        ["build_json_parse_fail", { opportunity_id: opportunity.id, raw: response.slice(0, 500) }]
       );
     }
 
+    const folderPath = path.join("products", `product_${opportunity.id}`);
+    fs.mkdirSync(path.join(folderPath, "app", "api", "process"), { recursive: true });
+    fs.mkdirSync(path.join(folderPath, "public"), { recursive: true });
+
+    // ── Write Next.js project files ─────────────────────────────────────────
+
+    // package.json
+    fs.writeFileSync(path.join(folderPath, "package.json"), JSON.stringify({
+      name: parsed?.package_name ?? productName,
+      version: "0.1.0",
+      private: true,
+      description: parsed?.description ?? opportunity.title,
+      scripts: {
+        dev: "next dev",
+        build: "next build",
+        start: "next start",
+      },
+      dependencies: {
+        next: "14.2.0",
+        react: "^18",
+        "react-dom": "^18",
+      },
+      devDependencies: {
+        typescript: "^5",
+        "@types/react": "^18",
+        "@types/react-dom": "^18",
+        "@types/node": "^20",
+        tailwindcss: "^3",
+        autoprefixer: "^10",
+        postcss: "^8",
+      },
+    }, null, 2));
+
+    // next.config.js
+    fs.writeFileSync(path.join(folderPath, "next.config.js"),
+      `/** @type {import('next').NextConfig} */\nconst nextConfig = {};\nmodule.exports = nextConfig;\n`
+    );
+
+    // tsconfig.json
+    fs.writeFileSync(path.join(folderPath, "tsconfig.json"), JSON.stringify({
+      compilerOptions: {
+        target: "es5", lib: ["dom", "dom.iterable", "esnext"],
+        allowJs: true, skipLibCheck: true, strict: true,
+        noEmit: true, esModuleInterop: true, module: "esnext",
+        moduleResolution: "bundler", resolveJsonModule: true,
+        isolatedModules: true, jsx: "preserve", incremental: true,
+        plugins: [{ name: "next" }],
+        paths: { "@/*": ["./*"] },
+      },
+      include: ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+      exclude: ["node_modules"],
+    }, null, 2));
+
+    // postcss.config.js
+    fs.writeFileSync(path.join(folderPath, "postcss.config.js"),
+      `module.exports = { plugins: { tailwindcss: {}, autoprefixer: {} } };\n`
+    );
+
+    // LLM-generated files
+    if (parsed?.tailwind_config) {
+      fs.writeFileSync(path.join(folderPath, "tailwind.config.ts"), parsed.tailwind_config);
+    }
+    if (parsed?.global_css) {
+      fs.writeFileSync(path.join(folderPath, "app", "globals.css"), parsed.global_css);
+    }
+    if (parsed?.layout_code) {
+      fs.writeFileSync(path.join(folderPath, "app", "layout.tsx"), parsed.layout_code);
+    }
+    if (parsed?.page_code) {
+      fs.writeFileSync(path.join(folderPath, "app", "page.tsx"), parsed.page_code);
+    }
+    if (parsed?.api_route_code) {
+      fs.writeFileSync(path.join(folderPath, "app", "api", "process", "route.ts"), parsed.api_route_code);
+    }
+
+    // README
+    fs.writeFileSync(path.join(folderPath, "README.md"), `
+# ${parsed?.package_name ?? productName}
+
+**${parsed?.tagline ?? opportunity.title}**
+
+Built by Organism — autonomous micro-SaaS builder.
+
+## Pain Hypothesis
+${opportunity.title}
+
+## How It Works
+Submit your input via the web UI. The API processes it and returns the result.
+
+## Deploy
+See DEPLOY.md for exact steps.
+`.trim());
+
+    // DEPLOY.md
+    fs.writeFileSync(path.join(folderPath, "DEPLOY.md"), `
+# Deployment Steps
+
+## 1. Install dependencies
+\`\`\`bash
+npm install
+\`\`\`
+
+## 2. Test locally
+\`\`\`bash
+npm run dev
+# → http://localhost:3000
+\`\`\`
+
+## 3. Deploy to Vercel
+\`\`\`bash
+npm i -g vercel
+vercel --prod
+\`\`\`
+
+## 4. Verify
+- Visit the deployed URL
+- Test the core flow end-to-end
+- Confirm API route responds correctly
+
+## 5. Update opportunity in DB
+\`\`\`sql
+UPDATE opportunities SET status = 'shipped' WHERE id = ${opportunity.id};
+\`\`\`
+`.trim());
+
     await query(`UPDATE opportunities SET status = 'shipped' WHERE id = $1`, [opportunity.id]);
     await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
-      ["product_built", { opportunity_id: opportunity.id, folder: folderPath }]
+      ["product_built", { opportunity_id: opportunity.id, folder: folderPath, product_name: productName }]
     );
 
     console.log(`  🚀 PRODUCT BUILT: ${folderPath}`);
+    console.log(`  📂 Next.js project ready — follow ${folderPath}/DEPLOY.md`);
     return parsed;
 
   } catch (err: any) {
@@ -257,9 +382,40 @@ Respond ONLY in valid JSON:
   }
 }
 
+// ── Zombie cleanup — auto-kills stale building opportunities ─────────────────
+
+async function killZombies() {
+  const zombieDaysResult = await query(
+    `SELECT value FROM policies WHERE key = 'zombie_kill_days'`
+  );
+  const days = Number(zombieDaysResult.rows[0]?.value ?? 5);
+
+  const zombies = await query(
+    `UPDATE opportunities
+     SET status = 'killed'
+     WHERE status = 'building'
+       AND created_at < NOW() - INTERVAL '${days} days'
+     RETURNING id, title`
+  );
+
+  for (const z of zombies.rows) {
+    await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
+      ["zombie_killed", { opportunity_id: z.id, title: z.title, after_days: days }]
+    );
+    console.log(`  🪦 ZOMBIE KILLED: "${z.title?.slice(0, 55)}" (>${days} days, no revenue)`);
+  }
+
+  if (zombies.rows.length === 0) {
+    console.log(`  ✓ No zombies found.`);
+  }
+}
+
 // ── Main entry point called by cycle.ts ─────────────────────────────────────
 
 export async function attemptBuild() {
+  // 0. Kill zombies first — free up the build slot before checking limits
+  await killZombies();
+
   // Check active build limit
   const activeBuilds = await query(
     `SELECT COUNT(*) as count FROM opportunities WHERE status = 'building'`
