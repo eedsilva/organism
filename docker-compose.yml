@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: organism-postgres
+    environment:
+      POSTGRES_USER: organism
+      POSTGRES_PASSWORD: organism
+      POSTGRES_DB: organism
+    ports:
+      - "5432:5432"
+    volumes:
+      - organism_pg_data:/var/lib/postgresql/data
+      - ./state/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U organism -d organism"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: organism-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - organism_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  organism_pg_data:
+  organism_redis_data:

@@ -1,0 +1,12 @@
+Subject: Stop wasting engineering hours on outdated architecture docs
+
+Hi [Name],
+
+I noticed you're leading engineering at [Company] and wanted to share something that might help your team. I'm building ArchDoc, a tool that automatically generates and maintains interactive architecture documentation directly from your codebase.
+
+Instead of wrestling with outdated diagrams or trying to keep documentation in sync manually, ArchDoc parses your imports and dependencies to create living documentation that evolves with your code. This eliminates the knowledge gaps that slow down new hires and cause expensive misunderstandings.
+
+The tool generates clear, interactive diagrams that help everyone from new developers to senior engineers understand complex systems quickly. Would you be open to joining our early access waitlist? We're starting at $39/month for founding customers.
+
+Best regards,
+[Your Name]

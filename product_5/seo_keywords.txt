@@ -1,0 +1,5 @@
+software architecture documentation tool
+automated code documentation
+living documentation tool
+architecture diagram generator
+codebase visualization tool
