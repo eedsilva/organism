@@ -1,4 +1,4 @@
-import { callLocalBrain } from "../cognition/llm";
+import { callBrain, callLocalBrain } from "../cognition/llm";
 import { query } from "../state/db";
 import { draftOutreach } from "./reach";
 import fs from "fs";
@@ -62,7 +62,8 @@ Respond ONLY in valid JSON, no markdown:
 `;
 
   try {
-    const response = await callLocalBrain(prompt);
+    // Code generation — use cloud (GPT-4o) when budget allows, qwen2.5-coder as Ollama fallback
+    const response = await callBrain(prompt, `preorder page for: ${opportunity.title?.slice(0, 50)}`, false, "code");
     let parsed: any = null;
 
     try {
@@ -228,7 +229,8 @@ REQUIREMENTS:
 `;
 
   try {
-    const response = await callLocalBrain(prompt);
+    // Code generation — use cloud (GPT-4o) when budget allows, qwen2.5-coder as Ollama fallback
+    const response = await callBrain(prompt, `building product: ${opportunity.title?.slice(0, 50)}`, false, "code");
     let parsed: any = null;
 
     try {

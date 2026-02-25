@@ -9,6 +9,9 @@
     "telegram": "ts-node -r dotenv/config kernel/telegram.ts",
     "infra:start": "docker compose up -d",
     "infra:stop": "docker compose down -v",
+    "db:migrate": "ts-node -r dotenv/config scripts/migrate.ts",
+    "db:migrate:dry": "ts-node -r dotenv/config scripts/migrate.ts --dry-run",
+    "db:status": "ts-node -r dotenv/config scripts/migrate.ts --status",
     "db:reset": "docker exec -i organism-postgres psql -U organism -d organism -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' && docker exec -i organism-postgres psql -U organism -d organism < state/schema.sql",
     "typecheck": "tsc --noEmit"
   },
@@ -19,10 +22,12 @@
   "dependencies": {
     "dotenv": "^17.3.1",
     "node-fetch": "^3.3.2",
+    "node-telegram-bot-api": "^0.67.0",
     "pg": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
+    "@types/node-telegram-bot-api": "^0.64.13",
     "@types/pg": "^8.16.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

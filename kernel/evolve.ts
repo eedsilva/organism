@@ -110,7 +110,7 @@ Respond ONLY with valid JSON. No markdown, no explanation:
 If no meaningful improvements exist, return an empty array: []
 `;
 
-    const response = await callBrain(prompt, "self-improvement analysis");
+    const response = await callBrain(prompt, "self-improvement analysis", false, "planning");
 
     try {
         const clean = response.replace(/```json|```/g, "").trim();

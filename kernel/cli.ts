@@ -1,6 +1,6 @@
 import * as readline from "readline";
 import { query } from "../state/db";
-import { callBrain, approveCloudRequest, rejectCloudRequest } from "../cognition/llm";
+import { callBrain, approveCloudRequest, rejectCloudRequest, getCloudSpendSummary } from "../cognition/llm";
 import { runReflect } from "./reflect";
 import { runCycle } from "./cycle";
 
@@ -221,6 +221,39 @@ async function cmdSense() {
     console.log(`  ✅ Sensing complete.`);
 }
 
+async function cmdColony() {
+    const { listColony } = await import("./replicate");
+    console.log(`\n${await listColony()}`);
+}
+
+async function cmdSpend() {
+
+    const s = await getCloudSpendSummary();
+    const pct = s.budget > 0 ? ((s.today / s.budget) * 100).toFixed(0) : "0";
+    const bar = "█".repeat(Math.round(Math.min(20, (s.today / Math.max(s.budget, 0.01)) * 20)))
+        + "░".repeat(Math.max(0, 20 - Math.round(Math.min(20, (s.today / Math.max(s.budget, 0.01)) * 20))));
+
+    console.log(`\n══════════════════════════════════════`);
+    console.log(`  ☁️  CLOUD LLM SPEND`);
+    console.log(`══════════════════════════════════════`);
+    console.log(`  Today:    $${s.today.toFixed(4)} / $${s.budget.toFixed(2)} (${pct}%)`);
+    console.log(`  [${bar}]`);
+    console.log(`  Remaining: $${s.remaining.toFixed(4)}`);
+    console.log(`  This week: $${s.week.toFixed(4)}`);
+    console.log(`  All-time:  $${s.allTime.toFixed(4)}`);
+
+    if (s.breakdown.length > 0) {
+        console.log(`\n  Today by model:`);
+        for (const b of s.breakdown) {
+            console.log(`    ${b.model.padEnd(16)} ${b.calls} call${b.calls !== 1 ? "s" : ""}  $${b.cost.toFixed(4)}`);
+        }
+    } else {
+        console.log(`\n  No cloud calls today.`);
+    }
+    console.log(`══════════════════════════════════════`);
+}
+
+
 function cmdHelp() {
     console.log(`
   SLASH COMMANDS (instant, no LLM)
@@ -228,6 +261,7 @@ function cmdHelp() {
   /status                 Survival summary: revenue, budget, pipeline
   /pipeline               All opportunities with status
   /top                    Top 5 opportunities by viability
+  /spend                  Cloud LLM spend: today / week / all-time by model
   /digest                 Print today's full digest
   /reflect                Force a reflection cycle now
   /sense                  Run all sensors immediately
@@ -268,9 +302,11 @@ async function handleInput(line: string): Promise<boolean> {
             case "/top": await cmdTop(); break;
             case "/pipeline": await cmdPipeline(); break;
             case "/proposals": await cmdProposals(); break;
+            case "/spend": await cmdSpend(); break;
             case "/digest": await cmdDigest(); break;
             case "/reflect": await cmdReflect(); break;
             case "/sense": await cmdSense(); break;
+            case "/colony": await cmdColony(); break;
             case "/help": cmdHelp(); break;
 
             case "/approve": {
@@ -289,6 +325,15 @@ async function handleInput(line: string): Promise<boolean> {
                 const id = parseInt(args[0]);
                 if (isNaN(id)) { console.log("  Usage: /approve-cloud <id>"); break; }
                 await cmdApproveCloud(id);
+                break;
+            }
+            case "/replicate": {
+                if (!args[0]) { await cmdColony(); break; }
+                const id = parseInt(args[0]);
+                if (isNaN(id)) { console.log("  Usage: /replicate <id>"); break; }
+                const { spawnChild } = await import("./replicate");
+                const result = await spawnChild(id);
+                console.log(`  ${result}`);
                 break;
             }
             case "/reject-cloud": {
@@ -314,7 +359,7 @@ ${context}
 
 OPERATOR ASKS: ${trimmed}`;
 
-            const answer = await callBrain(prompt, "operator conversation", false);
+            const answer = await callBrain(prompt, "operator conversation", false, "chat");
             console.log(`\n  🧬 ${answer.trim().replace(/\n/g, "\n  ")}`);
         } catch (err: any) {
             console.log(`  ❌ Brain error: ${err.message}`);

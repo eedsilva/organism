@@ -1,4 +1,4 @@
-import { callBrain } from "../cognition/llm";
+import { callBrain, TaskType } from "../cognition/llm";
 import { query } from "../state/db";
 
 /**
@@ -57,10 +57,12 @@ The score must be an integer between 0 and 100. Do not omit it.
   try {
     // Use cloud for high-viability scoring (worth the spend); local for routine ones
     const useCloud = (opportunity.viability_score ?? 0) >= 60;
+    const taskType: TaskType = useCloud ? "planning" : "scoring";
     const response = await callBrain(
       prompt,
-      `planning for high-viability opportunity: ${opportunity.title?.slice(0, 60)}`,
-      !useCloud   // forceLocal if viability is low
+      `planning for opportunity: ${opportunity.title?.slice(0, 60)}`,
+      !useCloud,
+      taskType
     );
 
     let parsed: any = null;

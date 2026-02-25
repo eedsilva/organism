@@ -1,5 +1,6 @@
 import { callBrain } from "../cognition/llm";
 import { query } from "../state/db";
+import { checkReplicationReadiness } from "./replicate";
 
 /**
  * reflect.ts — Adaptive self-improvement engine.
@@ -218,7 +219,9 @@ Respond ONLY in valid JSON, no markdown, no explanation:
 
   const response = await callBrain(
     prompt,
-    "weekly reflection — policy analysis"
+    "weekly reflection — policy analysis",
+    false,
+    "reflect"
   );
 
   try {
@@ -294,6 +297,9 @@ export async function runReflect() {
     );
 
     console.log("\n✅ Reflection complete.\n");
+
+    // Phase 5: check if a niche is ripe for a child organism
+    await checkReplicationReadiness(ctx);
 
   } catch (err: any) {
     console.error("❌ Reflection failed:", err.message);
