@@ -1,8 +1,7 @@
 import * as readline from "readline";
 import { query } from "../state/db";
 import { callBrain, approveCloudRequest, rejectCloudRequest, getCloudSpendSummary } from "../cognition/llm";
-import { runReflect } from "./reflect";
-import { runCycle } from "./cycle";
+
 
 /**
  * cli.ts — Interactive terminal REPL for the organism operator.
@@ -342,8 +341,43 @@ async function handleInput(line: string): Promise<boolean> {
                 await cmdRejectCloud(id);
                 break;
             }
+            case "/reach": {
+                const { getDraftedOutreach, formatOutreachDraft } = await import("./commands");
+                const drafts = await getDraftedOutreach();
+                if (drafts.length === 0) { console.log("  No drafted outreach yet."); break; }
+                for (const d of drafts) console.log(`\n${formatOutreachDraft(d)}`);
+                break;
+            }
+            case "/posted": {
+                const [idStr, url] = args;
+                const id = parseInt(idStr);
+                if (isNaN(id) || !url) { console.log("  Usage: /posted <id> <url>"); break; }
+                const { markPostedOutreach } = await import("./commands");
+                console.log(`  ${await markPostedOutreach(id, url)}`);
+                break;
+            }
+            case "/ideas": {
+                const { getIdeas } = await import("./commands");
+                console.log(`\n${await getIdeas()}`);
+                break;
+            }
+            case "/good": {
+                const id = parseInt(args[0]);
+                if (isNaN(id)) { console.log("  Usage: /good <id>"); break; }
+                const { rateIdea } = await import("./commands");
+                console.log(`  ${await rateIdea(id, "good")}`);
+                break;
+            }
+            case "/bad": {
+                const id = parseInt(args[0]);
+                if (isNaN(id)) { console.log("  Usage: /bad <id>"); break; }
+                const { rateIdea } = await import("./commands");
+                console.log(`  ${await rateIdea(id, "bad")}`);
+                break;
+            }
             default:
                 console.log(`  Unknown command: ${cmd}. Type /help for list.`);
+
         }
     } else {
         // Free-text: ask LLM with full organism context

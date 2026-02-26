@@ -1,5 +1,6 @@
 import { query } from "../state/db";
 import { getPendingOutreach } from "./reach";
+import { getCloudSpendSummary } from "../cognition/llm";
 import fs from "fs";
 import path from "path";
 
@@ -22,19 +23,9 @@ export async function generateDigest(): Promise<string> {
     `SELECT COALESCE(SUM(revenue_usd), 0) as total, COALESCE(SUM(payments), 0) as payments
      FROM metrics_daily`
   );
-  const todaySpend = await query(
-    `SELECT COALESCE(SUM(inference_cost_usd), 0) as total
-     FROM cycles WHERE DATE(started_at) = CURRENT_DATE`
-  );
-  const weekSpend = await query(
-    `SELECT COALESCE(SUM(inference_cost_usd), 0) as total
-     FROM cycles WHERE started_at >= NOW() - INTERVAL '7 days'`
-  );
-  const budgetPolicy = await query(`SELECT value FROM policies WHERE key = 'daily_budget_usd'`);
-  const dailyLimit = Number(budgetPolicy.rows[0]?.value ?? 5);
-  const todayBurn = Number(todaySpend.rows[0].total);
-  const budgetRemaining = dailyLimit - todayBurn;
-  const burnPct = Math.round((todayBurn / dailyLimit) * 100);
+
+  const spendSummary = await getCloudSpendSummary();
+  const spendPct = spendSummary.budget > 0 ? Math.round((spendSummary.today / spendSummary.budget) * 100) : 0;
 
   const pipeline = await query(`SELECT status, COUNT(*) as count FROM opportunities GROUP BY status`);
   const pipelineMap: Record<string, number> = {};
@@ -80,12 +71,12 @@ export async function generateDigest(): Promise<string> {
   const alive = totalRevenue > 0 ? "🟢 REVENUE FLOWING" : "🔴 NO REVENUE YET";
   push("", "  SURVIVAL STATUS", hr(),
     `  ${alive}`,
-    `  Total revenue:    ${formatUSD(totalRevenue)} (${totalPayments} payment${totalPayments !== 1 ? "s" : ""})`,
-    `  Today's burn:     ${formatUSD(todayBurn)} / ${formatUSD(dailyLimit)} (${burnPct}%)`,
-    `  Budget remaining: ${formatUSD(budgetRemaining)}`,
-    `  7-day spend:      ${formatUSD(weekSpend.rows[0].total)}`,
+    `  Total revenue:        ${formatUSD(totalRevenue)} (${totalPayments} payment${totalPayments !== 1 ? "s" : ""})`,
+    `  Cloud Spend Today:    ${formatUSD(spendSummary.today)} / ${formatUSD(spendSummary.budget)} (${spendPct}%)`,
+    `  Cloud Spend 7-day:    ${formatUSD(spendSummary.week)}`,
+    `  Cloud Spend All-time: ${formatUSD(spendSummary.allTime)}`,
   );
-  if (budgetRemaining < 1) push("", "  ⚠️  CRITICAL: Budget nearly exhausted.");
+  if (spendSummary.remaining < 1) push("", "  ⚠️  CRITICAL: Budget nearly exhausted.");
 
   // Pipeline
   push("", "  PIPELINE", hr(),

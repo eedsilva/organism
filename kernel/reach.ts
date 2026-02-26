@@ -1,4 +1,4 @@
-import { callLocalBrain } from "../cognition/llm";
+import { callBrain } from "../cognition/llm";
 import { query } from "../state/db";
 
 /**
@@ -46,7 +46,7 @@ Respond in this EXACT JSON format:
 `;
 
   try {
-    const response = await callLocalBrain(prompt);
+    const response = await callBrain(prompt, `outreach for: ${opportunity.title?.slice(0, 50)}`, false, "planning");
 
     let parsed: any = null;
     try {

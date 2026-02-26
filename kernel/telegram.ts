@@ -4,6 +4,8 @@ import {
     getStatus, getTop, getPipeline, getProposals, formatProposal,
     approveProposal, rejectProposal, approveCloud, rejectCloud,
     getSpend, getDigest, getPendingCloudRequests, drainTelegramNotifications,
+    getDraftedOutreach, formatOutreachDraft, markPostedOutreach,
+    getIdeas, rateIdea,
 } from "./commands";
 
 /**
@@ -88,19 +90,35 @@ async function handleCommand(
                 await send(bot, [
                     "🧬 *Organism Operator Bot*",
                     "",
-                    "Commands:",
-                    "/status — Survival summary",
-                    "/top — Top opportunities by viability",
-                    "/pipeline — Full pipeline",
-                    "/spend — Cloud LLM spend breakdown",
+                    "*Sensing & Ideas*",
+                    "/ideas — Unreviewed opportunities ranked by viability",
+                    "/good `<id>` — Rate an idea as high-quality",
+                    "/bad `<id>` — Rate an idea as noise",
+                    "/top — Top 5 by viability score",
+                    "/pipeline — Full pipeline (last 15)",
+                    "/status — Survival summary + error counts",
+                    "",
+                    "*Operations*",
                     "/digest — Today's full digest",
                     "/reflect — Force reflection now",
+                    "/sense — Run all sensors now",
+                    "/reach — Drafted outreach waiting to be posted",
+                    "/posted `<id>` `<url>` — Mark outreach as live",
+                    "",
+                    "*LLM & Budget*",
+                    "/spend — Cloud LLM spend breakdown",
+                    "/pending — Pending cloud approval requests",
+                    "/appcloud `<id>` — Approve cloud request",
+                    "/rejcloud `<id>` — Reject cloud request",
+                    "",
+                    "*Proposals*",
                     "/proposals — Pending self-improvement proposals",
-                    "/approve `<id>` — Approve a proposal",
+                    "/approve `<id>` — Apply a proposal",
                     "/reject `<id>` — Reject a proposal",
-                    "/appcloud `<id>` — Approve a cloud budget request",
-                    "/rejcloud `<id>` — Reject a cloud budget request",
-                    "/pending — Show pending cloud approval requests",
+                    "",
+                    "*Replication*",
+                    "/colony — List child organism specs",
+                    "/replicate `<id>` — Spawn a child organism",
                 ].join("\n"), chatId);
                 break;
 
@@ -124,11 +142,58 @@ async function handleCommand(
                 await sendLong(bot, await getDigest(), chatId);
                 break;
 
+            case "/ideas":
+                await sendLong(bot, await getIdeas(), chatId);
+                break;
+
+            case "/good": {
+                const id = parseInt(args[0]);
+                if (isNaN(id)) { await send(bot, "Usage: /good `<id>`", chatId); break; }
+                await send(bot, await rateIdea(id, "good"), chatId);
+                break;
+            }
+
+            case "/bad": {
+                const id = parseInt(args[0]);
+                if (isNaN(id)) { await send(bot, "Usage: /bad `<id>`", chatId); break; }
+                await send(bot, await rateIdea(id, "bad"), chatId);
+                break;
+            }
+
+            case "/reach": {
+                const drafts = await getDraftedOutreach();
+                if (drafts.length === 0) { await send(bot, "No drafted outreach yet.", chatId); break; }
+                for (const d of drafts) await send(bot, formatOutreachDraft(d), chatId);
+                break;
+            }
+
+            case "/posted": {
+                const id = parseInt(args[0]);
+                const url = args[1];
+                if (isNaN(id) || !url) { await send(bot, "Usage: /posted `<id>` `<url>`", chatId); break; }
+                await send(bot, await markPostedOutreach(id, url), chatId);
+                break;
+            }
+
             case "/reflect": {
                 await send(bot, "🔮 Running reflection...", chatId);
                 const { runReflect } = await import("./reflect");
                 await runReflect();
                 await send(bot, "✅ Reflection complete.", chatId);
+                break;
+            }
+
+            case "/sense": {
+                await send(bot, "👁️ Running all sensors...", chatId);
+                const { senseHackerNews } = await import("../sense/hn");
+                const { senseGithub } = await import("../sense/github");
+                const { senseReddit } = await import("../sense/reddit");
+                await Promise.all([
+                    senseHackerNews().catch((e: any) => console.log("HN err:", e.message)),
+                    senseGithub().catch((e: any) => console.log("GH err:", e.message)),
+                    senseReddit().catch((e: any) => console.log("Reddit err:", e.message)),
+                ]);
+                await send(bot, "✅ Sensing complete.", chatId);
                 break;
             }
 
@@ -138,23 +203,13 @@ async function handleCommand(
                     await send(bot, "No proposals yet.", chatId);
                     break;
                 }
-
                 for (const p of proposals.filter(p => p.status === "pending").slice(0, 5)) {
                     await send(bot, formatProposal(p), chatId, {
-                        reply_markup: approvalKeyboard(
-                            `approve_proposal:${p.id}`,
-                            `reject_proposal:${p.id}`
-                        ),
+                        reply_markup: approvalKeyboard(`approve_proposal:${p.id}`, `reject_proposal:${p.id}`),
                     });
                 }
-
                 const others = proposals.filter(p => p.status !== "pending");
-                if (others.length > 0) {
-                    await send(bot,
-                        `_${others.length} reviewed proposal(s) not shown._`,
-                        chatId
-                    );
-                }
+                if (others.length > 0) await send(bot, `_${others.length} reviewed proposals not shown._`, chatId);
                 break;
             }
 
@@ -188,22 +243,32 @@ async function handleCommand(
 
             case "/pending": {
                 const requests = await getPendingCloudRequests();
-                if (requests.length === 0) {
-                    await send(bot, "No pending cloud approval requests.", chatId);
+                if (requests.length === 0) { await send(bot, "No pending cloud requests.", chatId); break; }
+                for (const r of requests) {
+                    await send(bot, `⚠️ *Cloud budget request #${r.id}*\n${r.reason}`, chatId, {
+                        reply_markup: approvalKeyboard(`approve_cloud:${r.id}`, `reject_cloud:${r.id}`),
+                    });
+                }
+                break;
+            }
+
+            case "/colony": {
+                const { listColony } = await import("./replicate");
+                await sendLong(bot, await listColony(), chatId);
+                break;
+            }
+
+            case "/replicate": {
+                if (!args[0]) {
+                    const { listColony } = await import("./replicate");
+                    await sendLong(bot, await listColony(), chatId);
                     break;
                 }
-                for (const r of requests) {
-                    await send(bot,
-                        `⚠️ *Cloud budget request #${r.id}*\n${r.reason}`,
-                        chatId,
-                        {
-                            reply_markup: approvalKeyboard(
-                                `approve_cloud:${r.id}`,
-                                `reject_cloud:${r.id}`
-                            ),
-                        }
-                    );
-                }
+                const id = parseInt(args[0]);
+                if (isNaN(id)) { await send(bot, "Usage: /replicate `<id>`", chatId); break; }
+                await send(bot, "🧬 Spawning child organism...", chatId);
+                const { spawnChild } = await import("./replicate");
+                await send(bot, await spawnChild(id), chatId);
                 break;
             }
 
@@ -211,7 +276,7 @@ async function handleCommand(
                 await send(bot, `Unknown command. Type /help for list.`, chatId);
         }
     } catch (err: any) {
-        await send(bot, `❌ Error: ${err.message}`, chatId);
+        await send(bot, `❌ Error:\n\`\`\`\n${err.message}\n\`\`\``, chatId);
     }
 }
 
@@ -236,7 +301,7 @@ async function handleCallback(bot: TelegramBot, query: TelegramBot.CallbackQuery
             default: responseText = `Unknown action: ${action}`;
         }
     } catch (err: any) {
-        responseText = `❌ ${err.message}`;
+        responseText = `❌ Error:\n\`\`\`\n${err.message}\n\`\`\``;
     }
 
     // Answer the callback to remove the loading spinner
