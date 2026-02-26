@@ -1,15 +1,15 @@
-# Organism — Autonomous Economic Agent
+# Organism V2 — The Silent Craftsman
 
 ## Overview
 
-**Organism** is a self-evolving autonomous system designed to detect economic pain, validate demand, build minimal products, and generate revenue with minimal human intervention.
+**Organism** is a self-evolving autonomous system designed to detect high-intent economic pain, validate demand through targeted engagement, build incredibly beautiful minimal products, and generate a validated audience with minimal human intervention.
 
 Its core survival rule:
 
-> If it creates value and earns revenue, it lives.
-> If it fails to generate revenue, it must adapt and learn or die.
+> If it solves a real problem and captures high-intent leads (email/waitlist conversions from targeted traffic), it lives.
+> If it fails to convert targeted traffic, it must kill the idea, adapt, and learn.
 
-The system runs locally, operates in cycles, and continuously improves its own decision policies based on measurable outcomes.
+The system runs completely autonomously in the background. It is monitored through **Mission Control**, a beautiful dashboard that replaces manual chat notifications, allowing the operator to review its progress silently.
 
 ---
 
@@ -19,15 +19,16 @@ The system runs locally, operates in cycles, and continuously improves its own d
 
 The organism operates in repeating cycles:
 
-1. Self-check
-2. Budget evaluation
-3. Environmental sensing
-4. Opportunity scoring
-5. Planning
+1. Self-check & Environment Boot
+2. Budget & Configuration evaluation via **Mission Control**
+3. Environmental sensing (High-Intent B2B & Freelance sources)
+4. Opportunity scoring & Targeted Traffic Quality Checks
+5. Planning & Design Generation (using LLM as a Designer)
 6. Decision (pursue / discard)
-7. Build or outreach
-8. Metrics logging
-9. Reflection (periodic)
+7. Build & Automate Deployment (Vercel/Render)
+8. Direct Outreach (Cold Emails to Job Posters / Targeted SEO)
+9. Metrics logging (Tracking analytics & conversion rates)
+10. Reflection (periodic)
 
 All state is persisted in PostgreSQL.
 
@@ -38,14 +39,14 @@ All state is persisted in PostgreSQL.
 * **PostgreSQL (Docker)** — persistent memory
 * **Redis (Docker)** — optional caching
 * **Node.js + TypeScript** — execution engine
-* **Local LLM (Ollama)** — default brain
-* **Cloud LLM (GPT-4o or similar)** — escalation brain
-* **Stripe** — revenue signal
-* **Next.js (when building products)** — product layer
-* **Vercel** — deployment
-* **Cloudflare / ngrok** — local exposure
+* **Local LLM (Ollama)** — initial processing
+* **Cloud LLM (Gemini API / GPT-4o)** — advanced reasoning and **Design Generation**
+* **Next.js + Tailwind (organism-ui-chassis)** — premium, conversion-optimized frontend template
+* **Vercel / Render API** — automatic remote deployment
+* **Google Analytics / Plausible / PostHog** — targeted traffic and conversion tracking
+* **Resend / SendGrid** — push notifications and direct cold outreach
 
-The organism runs entirely on the host machine.
+The organism core runs entirely on the host machine, while the built products are deployed globally.
 
 ---
 
@@ -55,76 +56,38 @@ The organism runs entirely on the host machine.
 
 * Executes at fixed interval.
 * Prevents overlapping cycles.
-* Logs system state.
-* Serves as operational pulse.
+* Emits state changes to Mission Control via local API.
 
 ---
 
-## Self Diagnostics
+## Mission Control (The Executive Dashboard)
 
-Every cycle checks:
+Replaces all previous direct chat/terminal interventions.
 
-* Database connectivity
-* Disk access
-* Internet access
-* Budget state
-
-If diagnostics fail, cycle aborts.
+* **Pipeline View**: Kanban board tracking ideas from Sensing -> Validating -> Building -> Alive/Dead.
+* **Metrics View**: Analytics tracking targeted traffic sources and email conversions.
+* **Engine Room**: Visual controls for LLM budgets, sensor thresholds, and kill conditions.
+* **Push Notifications**: Concise, non-interruptive async alerts (via Email/Read-only Telegram) for major events, preserving autonomy.
 
 ---
 
-## Budget Governor
+## Environmental Sensing V2 (The New Diet)
 
-Tracks daily inference cost.
+Organism no longer feeds on generalized complaints; it seeks validated willingness-to-pay.
 
-States:
+### Freelance Job Sensor (Upwork, etc.)
+Targets: Business owners explicitly paying freelancers to perform manual tasks.
+Flow:
+* Scrape repetitive data-entry / manual tasks.
+* Extract poster contact info.
+* Build a micro-SaaS specifically for that task.
+* Send an automated direct cold email offering the solution.
 
-* `normal`
-* `lean`
-* `exhausted`
-
-Budget influences:
-
-* Local vs cloud brain usage
-* Planning depth
-* Reflection frequency
-
----
-
-## Environmental Sensing
-
-### Hacker News Sensor
-
-Pulls:
-
-* Ask HN threads
-* Automation-related discussions
-* Alternative-seeking posts
-
-Scores based on:
-
-* Economic friction keywords
-* Comment count
-* Intent language
-
-### Reddit Sensor (Planned)
-
-Targets:
-
-* r/Entrepreneur
-* r/smallbusiness
-* r/Contractors
-* r/freelance
-
-Searches for:
-
-* “I wish”
-* “is there a tool”
-* “how do you handle”
-* “manual process”
-* “too expensive”
-
-Purpose: Capture buyer-language pain.
+### B2B Review Sensor (Shopify, G2, ProductHunt, Chrome Web Store)
+Targets: 1-star and 2-star reviews of expensive, established software.
+Flow:
+* Identify specific missing features or massive UX failures.
+* Build a specialized, beautiful alternative to that specific workflow.
 
 ---
 
@@ -132,166 +95,51 @@ Purpose: Capture buyer-language pain.
 
 Each opportunity receives:
 
-* `pain_score`
-* `competition_score` (future)
-* `source_weight`
+* `pain_score` (based on intent language and willingness-to-pay)
+* `competitor_weakness_score` (based on negative review volumes)
 * `viability_score`
 
-Only opportunities above threshold are reviewed.
+Only opportunities above the threshold, configurable in Mission Control, are reviewed.
 
 ---
 
-## Planning
+## The pitch: Automated Design & Build
 
-The brain generates:
+When viability is high, Organism acts as a digital craftsman.
 
-* Underlying pain summary
-* Target customer
-* Minimal validation strategy
-* Monetization hypothesis
-
-Plans are scored programmatically.
+* It uses a premium `organism-ui-chassis` (Next.js, Tailwind, Framer Motion).
+* Instead of boilerplate, it calls the **Gemini API** to act as a Designer, dynamically generating optimized copy, color palettes, and UX flows.
+* The product is automatically pushed to production via the **Vercel/Render API**.
+* SEO is injected with semantic HTML and appropriate meta tags to drive organic discovery.
 
 ---
 
-## Decision Engine
+## The Validation Engine: Targeted Traffic Protocol
 
-Each opportunity becomes:
+Stripe revenue is postponed until Phase 3 to reduce initial friction. The new metric is High-Intent Conversion.
 
-* `discarded`
-* `reviewed`
-* `pursue`
-
-Threshold-based to prevent overbuilding.
+* **The Hook**: Free Trial, Lead Magnet Tool, or "Join Waitlist".
+* **The Analytics**: Google Analytics / Plausible tracks exactly *where* the user came from (UTM parameters).
+* **The Decision**: If 100 targeted visitors (e.g. from our cold outreach) result in 0 emails, the idea is killed. If conversion > 5%, the Organism classifies it as **Alive** and flags it in Mission Control for monetization.
 
 ---
 
-## Outreach Loop
+## Reflection Engine
 
-For high-scoring opportunities:
-
-* Generate post drafts (HN, Reddit, etc.)
-* Daily digest report
-* Push work to operator (low friction)
-
-Future:
-
-* Automated posting via API
-
----
-
-## Build Phase
-
-When viability > 60:
-
-Stage 1:
-
-* Preorder page
-* Stripe payment link
-* Email capture
-
-Stage 2:
-
-* Minimal Next.js app
-* Single core feature
-* Stripe checkout
-
-Deployment:
-
-* `vercel --prod`
-
----
-
-## Revenue Loop
-
-Stripe webhook listener:
-
-* On successful payment → record in `metrics_daily`
-* Revenue becomes survival metric
-* One payment = organism validation event
-
-Revenue is the true heartbeat.
-
----
-
-## Reflection Engine (Weekly)
-
-After 7 days:
-
-* Analyze opportunity outcomes
-* Analyze outreach engagement
-* Analyze conversion
-* Identify wasted cycles
-* Adjust:
-
-  * pain threshold
-  * source weights
-  * sensing frequency
-  * budget allocation
-
-Reflection modifies the `policies` table.
-
-This closes the self-improvement loop.
+* Analyze organic vs targeted traffic quality.
+* Analyze email conversion rates vs design choices.
+* Identify which sensing sources produce the most high-intent leads.
+* Adjust thresholds programmatically and log findings to Mission Control.
 
 ---
 
 # Survival Principles
 
-1. Kill aggressively (no zombie projects).
-2. Validate before building.
-3. Preorder before MVP.
-4. Limit concurrent builds.
-5. Budget is sacred.
-6. Revenue > engagement.
-7. Adapt hunting grounds if returns decline.
-
----
-
-# Development Roadmap
-
-### Phase 1
-
-* Reddit sensing
-* Daily digest
-* Stripe webhook
-
-### Phase 2
-
-* Preorder-first validation
-* Automated landing pages
-
-### Phase 3
-
-* Next.js scaffolding
-* Production deployment
-
-### Phase 4
-
-* Meta-learning adjustments
-* Policy self-modification
-
----
-
-# Constraints
-
-* Max 1 active build at a time
-* Max 3 outreach drafts per day
-* Reflection runs weekly
-* Daily inference budget enforced
-
----
-
-# Long-Term Evolution
-
-Eventually the organism should:
-
-* Automatically post to distribution channels
-* Deploy without manual CLI intervention
-* Manage Stripe lifecycle fully
-* Adjust its niche focus dynamically
-* Optimize for recurring revenue
-
-At that point, it becomes a self-directed economic entity.
+1. Kill aggressively (no zombie projects). 100 targeted views with 0 conversions = death.
+2. Build insanely beautiful products; people buy with their eyes.
+3. Validate demand via direct cold outreach to high-intent targets.
+4. Autonomy above all: use Mission Control to monitor, not to micromanage.
+5. High-Intent Email capture is the primary oxygen.
 
 ---
 
@@ -299,13 +147,9 @@ At that point, it becomes a self-directed economic entity.
 
 The organism is alive when:
 
-* It generates real Stripe payments
-* It adapts based on revenue signals
-* It prunes failed ideas automatically
-* It evolves its own decision policies
+* It captures high-intent emails from verified, targeted traffic sources.
+* It deploys incredibly polished web apps without human intervention.
+* It automatically prunes failed ideas based on analytics data.
+* It pushes meaningful updates to Mission Control autonomously.
 
-Without revenue, it is only simulating life.
-
----
-
-End of document.
+Without high-intent validation, it is only simulating life.

@@ -1,17 +1,15 @@
-# Organism — Technical Specification
+# Organism V2 — Technical Specification
 
 ## 1. Purpose
 
 Organism is a locally running autonomous economic agent that:
 
-1. Detects economic pain from public sources.
-2. Scores and ranks opportunities.
-3. Validates demand via outreach and preorder.
-4. Builds minimal products.
-5. Tracks revenue via Stripe.
-6. Adjusts its own decision policies weekly.
-
-All execution occurs on a single host machine.
+1. Detects validated economic pain from high-intent B2B and freelance sources.
+2. Acts as an AI Designer/Developer to build stunning, conversion-optimized Next.js applications using Gemini/GPT-4o.
+3. Automatically deploys apps globally via Vercel/Render APIs.
+4. Validates demand through targeted cold outreach, SEO, and email capture.
+5. Tracks traffic quality via integrated Analytics (Google Analytics / Plausible / PostHog).
+6. Is monitored strictly through a visual, local Next.js **Mission Control** dashboard.
 
 ---
 
@@ -19,19 +17,18 @@ All execution occurs on a single host machine.
 
 ## 2.1 Core Loop (Heartbeat)
 
-Runs every `N` seconds:
+Runs via a continuous, non-overlapping background process:
 
-1. Self-check
-2. Budget check
-3. Sensing
-4. Scoring
-5. Selection
-6. Planning
-7. Decision
-8. Build / Outreach
-9. Log metrics
-
-No overlapping cycles allowed.
+1. Boot & Self-check against PostgreSQL.
+2. Read configuration from Mission Control overrides.
+3. Sensing (Upwork/B2B APIs & Scrapers).
+4. LLM Scoring & Opportunity Selection.
+5. Design & Copy generation via Advanced LLM (Gemini API).
+6. Build & Chassis Injection (Next.js + Tailwind).
+7. External Deployment Vercel API.
+8. Direct Outreach (Cold Email scheduling via Resend).
+9. Wait for Analytics Webhooks / Email Captures.
+10. Evaluation & Kill/Live Decision.
 
 ---
 
@@ -39,18 +36,18 @@ No overlapping cycles allowed.
 
 ## 3.1 Local Services (Docker)
 
-* PostgreSQL
-* Redis (optional cache)
+* PostgreSQL (Core State)
+* Redis (Optional fast cache/queue)
 
 ## 3.2 Execution Environment
 
-* Node.js (TypeScript)
-* Express (for webhook + landing)
-* Next.js (product layer)
-* Vercel (deployment)
-* Stripe (payments)
-* Ollama (local LLM)
-* Cloud LLM (escalation only)
+* Node.js (TypeScript) — The Brain / Loop
+* Next.js (Local `localhost:3000`) — Mission Control Dashboard
+* `organism-ui-chassis` (Next.js) — The generated remote products
+* Vercel API / Render API — Deployment Infrastructure
+* Gemini API / GPT-4o — Design & Reasoning
+* Resend / SendGrid — Cold Emails & Push Notifications
+* Google Analytics Data API / Plausible API — Targeted Traffic Verification
 
 ---
 
@@ -59,259 +56,112 @@ No overlapping cycles allowed.
 ## opportunities
 
 * id
-* source
-* title
-* evidence_url (unique)
+* source (e.g., 'upwork', 'g2')
+* target_contact (email/linkedin if applicable)
 * pain_score
-* competition_score
 * viability_score
-* status
+* status (new, validating, building, alive, dead)
+* metadata (JSONB - for source specific data)
 * created_at
 
-## events
+## deployments
 
 * id
-* type
-* payload (JSONB)
+* opportunity_id
+* vercel_project_id
+* live_url
+* design_tokens (JSONB - colors, typography injected)
 * created_at
 
-## metrics_daily
+## metrics_validation
 
+* id
+* opportunity_id
 * date
-* revenue_usd
-* signups
-* outreach_posts
-* conversions
+* traffic_total
+* traffic_targeted (verified via UTM/Source)
+* emails_captured
+* conversion_rate
 
 ## policies
 
-* key
+* key (e.g., 'budget_daily', 'kill_threshold')
 * value (JSONB)
 
-## actions
+---
 
-* opportunity_id
-* type
-* status
+# 5. Sensing Layer (The Diet)
+
+## 5.1 Freelance Job Sensor (Upwork/B2B Boards)
+
+Target: Manual tasks being outsourced.
+Mechanism:
+* RSS or API scraping for specific keywords ("data entry", "pdf to excel", "manual scrape").
+* LLM extracts the specific task and evaluates if a micro-SaaS can automate it.
+* Extracts contact info (if available) for downstream outreach.
+
+## 5.2 B2B Review Sensor (Shopify, G2, Chrome Web Store, ProductHunt)
+
+Target: 1-star reviews on successful apps.
+Mechanism:
+* Scrape reviews filtering for 1-2 stars.
+* LLM groups complaints to identify a unified "Missing Feature" or "UX Failure".
+* Generates an opportunity to build a standalone app solving just that failure.
 
 ---
 
-# 5. Sensing Layer
+# 6. The Build Module (Dynamic Design)
 
-## 5.1 Hacker News
+Trigger: `viability_score` > Threshold.
 
-Source:
-Algolia API
-
-Signal extraction:
-
-* automation
-* alternative
-* manual process
-* expensive
-* workflow
-
-Pain scoring:
-
-* keyword weights
-* comment count weight
-
-## 5.2 Reddit (Planned)
-
-Subreddits:
-
-* r/Entrepreneur
-* r/smallbusiness
-* r/Contractors
-* r/freelance
-
-Search terms:
-
-* "I wish"
-* "is there a tool"
-* "how do you handle"
-* "manual"
-* "spreadsheet"
-* "too expensive"
+1. **The Chassis**: Organism clones a local `organism-ui-chassis` template (Next.js 14+, Tailwind, Framer Motion).
+2. **The Designer LLM**: Organism sends the opportunity context to Gemini/GPT-4o, prompting for:
+   * Hero Copy & Value Proposition.
+   * Color Palette (Hex codes).
+   * Feature Matrix.
+   * Lead Magnet Strategy.
+3. **Injection**: The LLM outputs structured JSON, which is injected into the Chassis configuration files.
+4. **Deployment**: Organism calls Vercel API `/v9/projects` to create a new project and pushes the code. Return live URL.
 
 ---
 
-# 6. Opportunity Lifecycle
+# 7. The Outreach & Tracking Module
 
-States:
-
-* new
-* reviewing
-* discarded
-* pursue
-* building
-* completed
-* failed
-
-Flow:
-
-new → reviewing → (discarded | pursue)
-pursue → building → (completed | failed)
+1. **Direct Pitching**: If the source was Upwork, use Resend API to send a highly personalized cold email to the poster with the generated Vercel URL, appending `?utm_source=cold_email`.
+2. **Analytics Sync**: The Next.js chassis includes GA/Plausible tracking scripts.
+3. **Lead Capture**: The chassis includes an email capture form that POSTs to an Organism webhook or stores directly in PostgreSQL.
 
 ---
 
-# 7. Scoring Model
+# 8. Decision Engine (Kill or Live)
 
-## pain_score
+Every 24 hours post-deployment, Organism evaluates `metrics_validation`.
 
-Keyword + engagement-based.
+Kill Condition (Example):
+* `traffic_targeted` > 100 AND `emails_captured` == 0 -> Mark as `dead`. Invoke Vercel API to teardown project.
 
-## competition_score
-
-Mentions of known SaaS competitors.
-
-## viability_score
-
-pain_score * source_weight - competition_score
-
-Only viability_score ≥ threshold triggers pursue.
-
-Threshold stored in policies table.
+Live Condition:
+* `emails_captured` / `traffic_targeted` > 5% -> Mark as `alive`. Send Push Notification to CEO.
 
 ---
 
-# 8. Planning
+# 9. Mission Control (UI)
 
-LLM generates:
+Replaces Telegram. A local Next.js app querying the PostgreSQL database directly.
 
-* pain summary
-* ICP (ideal customer profile)
-* validation strategy
-* monetization model
-
-Plan scored programmatically.
-
-Cloud escalation only if viability_score high.
+Provides:
+* **Kanban view** of all opportunities.
+* **Metrics dashboards** pulling from Plausible API and local `metrics_validation` table.
+* **Control panel** to update the `policies` table in real-time.
 
 ---
 
-# 9. Outreach Module
+# 10. Notifications
 
-For viable opportunities:
-
-* Generate:
-
-  * Reddit draft
-  * HN draft
-  * Short-form post
-
-* Store in events.
-
-* Daily digest printed to terminal.
-
-Future:
-Automated posting via API.
-
----
-
-# 10. Build Module
-
-Trigger condition:
-viability_score ≥ 60
-
-Stage 1:
-
-* Preorder landing page
-* Stripe payment link
-* Email capture
-* Deployed locally
-
-Stage 2:
-
-* Next.js app scaffold
-* Single core feature
-* Stripe checkout
-* Vercel deployment
-
-Only 1 active build allowed at a time.
-
----
-
-# 11. Revenue Loop
-
-Stripe webhook endpoint:
-
-POST /webhook/stripe
-
-On payment:
-
-* increment revenue_usd
-* increment conversions
-* mark opportunity as validated
-
-Revenue > 0 = survival event.
-
----
-
-# 12. Reflection Engine (Weekly)
-
-Reads last 7 days:
-
-* opportunity outcomes
-* outreach engagement
-* conversion rates
-* revenue
-
-Brain asked:
-
-* What signals correlate with revenue?
-* What sensing source underperforms?
-* Should thresholds change?
-
-Updates policies table.
-
----
-
-# 13. Budget System
-
-Tracks:
-
-* Daily LLM spend
-* Local vs cloud calls
-
-Modes:
-
-* normal
-* lean
-* exhausted
-
-Budget affects:
-
-* Brain selection
-* Reflection frequency
-* Sensing depth
-
----
-
-# 14. Constraints
-
-* Max 1 active product
-* Max 3 outreach drafts/day
-* Kill idea after 5 days no traction
-* Reflection weekly only
-* Preorder before MVP
-
----
-
-# 15. Survival Definition
-
-Organism is alive when:
-
-* Stripe revenue recorded
-* Policies evolve based on outcomes
-* Failed ideas pruned automatically
-
-Without revenue:
-
-* Budget reduces
-* Sensing widens
-* Threshold lowers
-* Eventually halts
+To maintain autonomy while providing visibility, Organism uses Resend to send a daily asynchronous digest email or a read-only Telegram channel message:
+* "Deployed Project X to vercel.app"
+* "Killed Project Y (0% conversion on 150 targeted clicks)"
+* "Project Z is ALIVE! (8% conversion rate)" 
 
 ---
 

@@ -1,8 +1,9 @@
 import { query } from "../state/db";
 import { getPendingOutreach } from "./reach";
 import { getCloudSpendSummary } from "../cognition/llm";
-import fs from "fs";
-import path from "path";
+import { sendPushNotification } from "./notify";
+import * as fs from "fs";
+import * as path from "path";
 
 function formatUSD(val: any): string {
   return `$${Number(val).toFixed(2)}`;
@@ -89,7 +90,9 @@ export async function generateDigest(): Promise<string> {
   // Top opportunities
   if (topOpportunities.rows.length > 0) {
     push("", "  TOP OPPORTUNITIES", hr());
-    for (const [i, opp] of topOpportunities.rows.entries()) {
+    const topRows = Array.from(topOpportunities.rows);
+    for (let i = 0; i < topRows.length; i++) {
+      const opp = topRows[i];
       push(
         `  ${i + 1}. [viability: ${opp.viability_score}] ${opp.title.slice(0, 60)}`,
         `     ${opp.source} | pain: ${opp.pain_score} | wtp: ${opp.wtp_score}`,
@@ -122,7 +125,9 @@ export async function generateDigest(): Promise<string> {
   // Outreach
   if (outreach.length > 0) {
     push("", `  OUTREACH READY (${outreach.length} total — post these)`, hr());
-    for (const [i, item] of outreach.slice(0, 3).entries()) {
+    const outreachSlice = outreach.slice(0, 3);
+    for (let i = 0; i < outreachSlice.length; i++) {
+      const item = outreachSlice[i];
       push("", `  ── ${i + 1}. [${item.channel.toUpperCase()}] ──`,
         `  Topic: ${item.title.slice(0, 55)}`, "",
         ...item.content.split("\n").map((l: string) => `  ${l}`), "",
@@ -169,4 +174,11 @@ export async function runDigest() {
   fs.writeFileSync(path.join(digestDir, "latest_digest.md"), digest);
 
   await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`, ["digest_generated", { filename }]);
+
+  // Broadcast the daily digest via email
+  await sendPushNotification(
+    "Daily Digest",
+    digest,
+    `<pre style="background: #111; color: #fff; padding: 15px; border-radius: 6px; font-size: 13px; overflow-x: auto;">${digest}</pre>`
+  );
 }

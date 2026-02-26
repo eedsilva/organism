@@ -5,6 +5,7 @@ import { getBudgetStatus } from "./budgets";
 import { senseHackerNews } from "../sense/hn";
 import { senseGithub } from "../sense/github";
 import { senseReddit } from "../sense/reddit";
+import { senseAppReviews } from "../sense/reviews";
 import { selectTopOpportunity } from "./decide";
 import { generatePlan } from "./plan";
 import { attemptBuild } from "./build";
@@ -58,11 +59,12 @@ export async function runCycle() {
       return;
     }
 
-    // 2. Sense — all three in parallel, Reddit failure non-fatal
+    // 2. Sense — all in parallel
     console.log("\n👁️  Sensing...");
     await Promise.all([
       senseHackerNews().then(() => console.log("  ✅ HN")),
       senseGithub().then(() => console.log("  ✅ GitHub")),
+      senseAppReviews().then(() => console.log("  ✅ B2B Reviews")),
       senseReddit().catch((err: any) => console.log(`  ⚠️  Reddit: ${err.message}`)),
     ]);
 

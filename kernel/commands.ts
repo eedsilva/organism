@@ -4,20 +4,20 @@ import {
     rejectCloudRequest,
     getCloudSpendSummary,
 } from "../cognition/llm";
-import fs from "fs";
+import * as fs from "fs";
 
 /**
- * commands.ts — Shared command handlers for CLI and Telegram bot.
+ * commands.ts — Shared command handlers for the Organism CLI and Mission Control APIs.
  *
- * Every function returns a formatted string so that both interfaces
- * can display the output in their own way (console.log vs bot.sendMessage).
+ * Every function returns a formatted string so that callers
+ * can display the output in their own way.
  */
 
 // ── /status ───────────────────────────────────────────────────────────────────
 
 export async function getStatus(): Promise<string> {
-    const [revenue, budget, todayBurn, pipeline, todayErrors] = await Promise.all([
-        query(`SELECT COALESCE(SUM(revenue_usd),0) as total, COALESCE(SUM(payments),0) as payments FROM metrics_daily`),
+    const [leads, budget, todayBurn, pipeline, todayErrors] = await Promise.all([
+        query(`SELECT COALESCE(SUM(signups),0) as total_signups FROM metrics_daily`),
         query(`SELECT value FROM policies WHERE key = 'daily_budget_usd'`),
         query(`SELECT COALESCE(SUM(inference_cost_usd),0) as burn FROM cycles WHERE DATE(started_at) = CURRENT_DATE`),
         query(`SELECT status, COUNT(*) as count FROM opportunities GROUP BY status ORDER BY count DESC`),
@@ -27,8 +27,7 @@ export async function getStatus(): Promise<string> {
            GROUP BY type ORDER BY n DESC LIMIT 5`),
     ]);
 
-    const total = Number(revenue.rows[0]?.total ?? 0);
-    const payments = Number(revenue.rows[0]?.payments ?? 0);
+    const signups = Number(leads.rows[0]?.total_signups ?? 0);
     const burn = Number(todayBurn.rows[0]?.burn ?? 0);
     const limit = Number(budget.rows[0]?.value ?? 5);
 
@@ -44,9 +43,9 @@ export async function getStatus(): Promise<string> {
 
     return [
         `🧬 *ORGANISM STATUS*`,
-        `Revenue:  $${total.toFixed(2)} (${payments} payment${payments !== 1 ? "s" : ""})`,
+        `Leads:    ${signups} waitlist signup${signups !== 1 ? "s" : ""}`,
         `Burn:     $${burn.toFixed(2)} / $${limit.toFixed(2)} today`,
-        `Survival: ${total > 0 ? "🟢 ALIVE" : "🔴 NO REVENUE YET"}`,
+        `Survival: ${signups > 0 ? "🟢 ALIVE" : "🔴 NO SIGNUPS YET"}`,
         `${errorLine}`,
         ``,
         `*Pipeline:*`,
@@ -219,30 +218,6 @@ export async function getPendingCloudRequests(): Promise<PendingCloudRequest[]> 
      ORDER BY created_at DESC LIMIT 5`
     );
     return rows.rows as PendingCloudRequest[];
-}
-
-// ── Unread telegram_notify events ────────────────────────────────────────────
-
-export interface TelegramNotification {
-    id: number;
-    message: string;
-    action: string | null;
-    event_id: number | null;
-}
-
-export async function drainTelegramNotifications(): Promise<TelegramNotification[]> {
-    // Mark as dispatched atomically by updating payload
-    const rows = await query(
-        `UPDATE events
-     SET payload = payload || '{"dispatched":true}'::jsonb
-     WHERE type = 'telegram_notify'
-       AND NOT (payload ? 'dispatched')
-     RETURNING id,
-               payload->>'message'   as message,
-               payload->>'action'    as action,
-               (payload->>'event_id')::int as event_id`
-    );
-    return rows.rows as TelegramNotification[];
 }
 
 // ── /reach ──────────────────────────────────────────────────────────────────

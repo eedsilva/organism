@@ -1,5 +1,6 @@
 import fetch from "node-fetch";
 import { query } from "../state/db";
+import { sendPushNotification } from "../kernel/notify";
 
 /**
  * reddit.ts — Pain sensing from Reddit communities.
@@ -246,10 +247,12 @@ export async function senseReddit() {
   if (highValueFound.length > 0) {
     const msg = `🔭 *${highValueFound.length} high-value Reddit idea${highValueFound.length > 1 ? "s" : ""} found*\n\n`
       + highValueFound.slice(0, 5).map(s => `• ${s}`).join("\n")
-      + `\n\n/ideas to review`;
-    await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
-      ["telegram_notify", { message: msg }]
-    ).catch(() => { });
+      + `\n\nReview them in Mission Control.`;
+
+    await sendPushNotification(
+      `High-Value Reddit Signals Detected`,
+      msg
+    );
   }
 
   console.log(`  Reddit: ${inserted} new, ${errors} errors (${isAuthenticated ? "OAuth" : "unauth"})`);

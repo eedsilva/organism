@@ -1,6 +1,6 @@
 import { callBrain } from "../cognition/llm";
 import { query } from "../state/db";
-import { checkReplicationReadiness } from "./replicate";
+
 
 /**
  * reflect.ts — Adaptive self-improvement engine.
@@ -97,14 +97,16 @@ async function gatherContext(): Promise<Record<string, any>> {
 
   const revenue = await query(
     `SELECT COALESCE(SUM(revenue_usd), 0) as total,
-            COALESCE(SUM(payments), 0) as payments
+            COALESCE(SUM(payments), 0) as payments,
+            COALESCE(SUM(signups), 0) as signups
      FROM metrics_daily
      WHERE date >= CURRENT_DATE - INTERVAL '7 days'`
   );
 
   const allTimeRevenue = await query(
     `SELECT COALESCE(SUM(revenue_usd), 0) as total,
-            COALESCE(SUM(payments), 0) as payments
+            COALESCE(SUM(payments), 0) as payments,
+            COALESCE(SUM(signups), 0) as signups
      FROM metrics_daily`
   );
 
@@ -179,15 +181,15 @@ ${JSON.stringify(ctx.sourcePerformance, null, 2)}
 OUTREACH PERFORMANCE:
 ${JSON.stringify(ctx.outreachPerformance, null, 2)}
 
-REVENUE (period): $${ctx.revenue.total} from ${ctx.revenue.payments} payment(s)
-REVENUE (all time): $${ctx.allTimeRevenue.total} from ${ctx.allTimeRevenue.payments} payment(s)
+LEADS (period): ${ctx.revenue.signups} email(s) captured
+LEADS (all time): ${ctx.allTimeRevenue.signups} email(s) captured
 
 PIPELINE HEALTH: ${JSON.stringify(ctx.killRate, null, 2)}
 CYCLE HEALTH: ${JSON.stringify(ctx.cycleHealth, null, 2)}
 BRAIN ERRORS: ${ctx.brainErrors}
 
 DECISION RULES:
-- If all-time revenue = 0 AND multiple cycles run → status is "struggling" or "dying"
+- If all-time leads = 0 AND multiple cycles run → status is "struggling" or "dying"
 - If pursued rate < 1% of new opportunities → lower min_viability_score
 - If brain_errors > 3 → something is wrong with LLM prompts, note it
 - If a source has 0 pursued in 2+ reflections → cut its weight below 0.5
@@ -297,9 +299,6 @@ export async function runReflect() {
     );
 
     console.log("\n✅ Reflection complete.\n");
-
-    // Phase 5: check if a niche is ripe for a child organism
-    await checkReplicationReadiness(ctx);
 
   } catch (err: any) {
     console.error("❌ Reflection failed:", err.message);

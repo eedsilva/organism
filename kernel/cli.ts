@@ -93,7 +93,9 @@ async function cmdTop() {
 
     console.log(`\n  TOP OPPORTUNITIES`);
     console.log(`  ─────────────────────────────────────`);
-    for (const [i, o] of rows.rows.entries()) {
+    const oppRows = Array.from(rows.rows);
+    for (let i = 0; i < oppRows.length; i++) {
+        const o = oppRows[i];
         console.log(`  ${i + 1}. [v:${o.viability_score}] ${o.title?.slice(0, 60)}`);
         console.log(`     ${o.source} | pain:${o.pain_score} wtp:${o.wtp_score}`);
     }
@@ -221,8 +223,7 @@ async function cmdSense() {
 }
 
 async function cmdColony() {
-    const { listColony } = await import("./replicate");
-    console.log(`\n${await listColony()}`);
+    console.log(`\n  Colony listing disabled. Check the 'colonies/' directory for active instances.`);
 }
 
 async function cmdSpend() {
@@ -328,8 +329,7 @@ async function handleInput(line: string): Promise<boolean> {
             }
             case "/replicate": {
                 if (!args[0]) { await cmdColony(); break; }
-                const id = parseInt(args[0]);
-                if (isNaN(id)) { console.log("  Usage: /replicate <id>"); break; }
+                const id = args[0]; // expecting a string guid
                 const { spawnChild } = await import("./replicate");
                 const result = await spawnChild(id);
                 console.log(`  ${result}`);

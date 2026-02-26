@@ -6,7 +6,7 @@
   "scripts": {
     "start": "ts-node -r dotenv/config kernel/heartbeat.ts",
     "talk": "ts-node -r dotenv/config kernel/cli.ts",
-    "telegram": "ts-node -r dotenv/config kernel/telegram.ts",
+    "mission-control": "cd mission-control && npm run dev",
     "infra:start": "docker compose up -d",
     "infra:stop": "docker compose down -v",
     "db:migrate": "ts-node -r dotenv/config scripts/migrate.ts",
@@ -22,12 +22,11 @@
   "dependencies": {
     "dotenv": "^17.3.1",
     "node-fetch": "^3.3.2",
-    "node-telegram-bot-api": "^0.67.0",
-    "pg": "^8.18.0"
+    "pg": "^8.18.0",
+    "resend": "^6.9.2"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
-    "@types/node-telegram-bot-api": "^0.64.13",
     "@types/pg": "^8.16.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
