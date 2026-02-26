@@ -8,5 +8,10 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "products",
+    "mission-control"
+  ]
 }

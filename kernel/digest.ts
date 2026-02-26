@@ -20,8 +20,8 @@ function hr(char = "─", len = 50): string {
 }
 
 export async function generateDigest(): Promise<string> {
-  const revenue = await query(
-    `SELECT COALESCE(SUM(revenue_usd), 0) as total, COALESCE(SUM(payments), 0) as payments
+  const validation = await query(
+    `SELECT COALESCE(SUM(signups), 0) as signups
      FROM metrics_daily`
   );
 
@@ -60,8 +60,7 @@ export async function generateDigest(): Promise<string> {
   const cycleMap: Record<string, number> = {};
   for (const row of recentCycles.rows) cycleMap[row.status] = Number(row.count);
 
-  const totalRevenue = Number(revenue.rows[0].total);
-  const totalPayments = Number(revenue.rows[0].payments);
+  const totalSignups = Number(validation.rows[0].signups);
 
   const lines: string[] = [];
   const push = (...args: string[]) => lines.push(...args);
@@ -69,10 +68,10 @@ export async function generateDigest(): Promise<string> {
   push("", hr("═"), "  ORGANISM DAILY DIGEST", `  ${formatDate()}`, hr("═"));
 
   // Survival
-  const alive = totalRevenue > 0 ? "🟢 REVENUE FLOWING" : "🔴 NO REVENUE YET";
+  const alive = totalSignups > 0 ? "🟢 LEADS CAPTURED" : "🔴 NO LEADS YET";
   push("", "  SURVIVAL STATUS", hr(),
     `  ${alive}`,
-    `  Total revenue:        ${formatUSD(totalRevenue)} (${totalPayments} payment${totalPayments !== 1 ? "s" : ""})`,
+    `  Waitlist Signups:     ${totalSignups} High-Intent Emails`,
     `  Cloud Spend Today:    ${formatUSD(spendSummary.today)} / ${formatUSD(spendSummary.budget)} (${spendPct}%)`,
     `  Cloud Spend 7-day:    ${formatUSD(spendSummary.week)}`,
     `  Cloud Spend All-time: ${formatUSD(spendSummary.allTime)}`,
@@ -149,7 +148,7 @@ export async function generateDigest(): Promise<string> {
   if (outreach.length > 0) actions.push(`→ Post ${Math.min(outreach.length, 3)} outreach item(s) above`);
   if (zombies.rows.length > 0) actions.push(`→ Kill ${zombies.rows.length} zombie(s) — wasting budget`);
   if (preorders.rows.some((p: any) => Number(p.hours_live) >= 48)) actions.push("→ 48h window passed on preorder(s) — kill or build");
-  if (totalRevenue === 0) actions.push("→ Zero revenue. First preorder payment is the only goal.");
+  if (totalSignups === 0) actions.push("→ Zero validation. First waitlist signup is the only goal.");
   if (actions.length === 0) actions.push("→ Nothing urgent. Let the organism run.");
   for (const a of actions) push(`  ${a}`);
   push("", hr("═"), "");

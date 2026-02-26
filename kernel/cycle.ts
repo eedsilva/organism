@@ -6,6 +6,7 @@ import { senseHackerNews } from "../sense/hn";
 import { senseGithub } from "../sense/github";
 import { senseReddit } from "../sense/reddit";
 import { senseAppReviews } from "../sense/reviews";
+import { senseUpwork } from "../sense/upwork";
 import { selectTopOpportunity } from "./decide";
 import { generatePlan } from "./plan";
 import { attemptBuild } from "./build";
@@ -65,6 +66,7 @@ export async function runCycle() {
       senseHackerNews().then(() => console.log("  ✅ HN")),
       senseGithub().then(() => console.log("  ✅ GitHub")),
       senseAppReviews().then(() => console.log("  ✅ B2B Reviews")),
+      senseUpwork().then(() => console.log("  ✅ Upwork Jobs")),
       senseReddit().catch((err: any) => console.log(`  ⚠️  Reddit: ${err.message}`)),
     ]);
 

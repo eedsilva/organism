@@ -19,7 +19,7 @@ const PROMPT = "\n🧬 you> ";
 async function buildContext(): Promise<string> {
     const [pipeline, revenue, recentReflection, policies, recentEvents] = await Promise.all([
         query(`SELECT status, COUNT(*) as count FROM opportunities GROUP BY status ORDER BY count DESC`),
-        query(`SELECT COALESCE(SUM(revenue_usd),0) as total, COALESCE(SUM(payments),0) as payments FROM metrics_daily`),
+        query(`SELECT COALESCE(SUM(signups),0) as signups FROM metrics_daily`),
         query(`SELECT result->>'summary' as summary, result->>'revenue_assessment' as assessment, created_at
            FROM reflection_log ORDER BY created_at DESC LIMIT 1`),
         query(`SELECT key, value FROM policies ORDER BY key`),
@@ -34,9 +34,8 @@ async function buildContext(): Promise<string> {
 
     return JSON.stringify({
         pipeline: pipelineMap,
-        revenue: {
-            total_usd: Number(revenue.rows[0]?.total ?? 0),
-            payments: Number(revenue.rows[0]?.payments ?? 0),
+        validation: {
+            total_signups: Number(revenue.rows[0]?.signups ?? 0),
         },
         last_reflection: recentReflection.rows[0] ?? null,
         policies: policyMap,
@@ -48,7 +47,7 @@ async function buildContext(): Promise<string> {
 
 async function cmdStatus() {
     const revenue = await query(
-        `SELECT COALESCE(SUM(revenue_usd),0) as total, COALESCE(SUM(payments),0) as payments FROM metrics_daily`
+        `SELECT COALESCE(SUM(signups),0) as total_signups FROM metrics_daily`
     );
     const budget = await query(
         `SELECT value FROM policies WHERE key = 'daily_budget_usd'`
@@ -60,17 +59,16 @@ async function cmdStatus() {
         `SELECT status, COUNT(*) as count FROM opportunities GROUP BY status ORDER BY count DESC`
     );
 
-    const total = Number(revenue.rows[0]?.total ?? 0);
-    const payments = Number(revenue.rows[0]?.payments ?? 0);
+    const signups = Number(revenue.rows[0]?.total_signups ?? 0);
     const burn = Number(todayBurn.rows[0]?.burn ?? 0);
     const limit = Number(budget.rows[0]?.value ?? 5);
 
     console.log(`\n══════════════════════════════════════`);
     console.log(`  ORGANISM STATUS`);
     console.log(`══════════════════════════════════════`);
-    console.log(`  Revenue:     $${total.toFixed(2)} (${payments} payment${payments !== 1 ? "s" : ""})`);
+    console.log(`  Validations: ${signups} Waitlist Signups Captured`);
     console.log(`  Today burn:  $${burn.toFixed(2)} / $${limit.toFixed(2)}`);
-    console.log(`  Survival:    ${total > 0 ? "🟢 ALIVE" : "🔴 NO REVENUE YET"}`);
+    console.log(`  Survival:    ${signups > 0 ? "🟢 ALIVE" : "🔴 NO LEADS YET"}`);
     console.log(`\n  Pipeline:`);
     for (const row of pipeline.rows) {
         console.log(`    ${row.status.padEnd(12)} ${row.count}`);
