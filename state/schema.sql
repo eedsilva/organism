@@ -106,11 +106,11 @@ INSERT INTO policies (key, value) VALUES
   ('min_plan_score',              '40'),
   ('min_viability_score',         '30'),
   ('max_opportunities_per_cycle', '3'),
+  ('max_concurrent_validations',  '3'),
 
   -- Source trust weights (used by decide.ts + reflect.ts)
   ('hackernews_weight',           '1.0'),
   ('reddit_weight',               '1.3'),
-  ('github_weight',               '0.7'),
 
   -- Outreach & lifecycle controls
   ('max_outreach_drafts_per_day', '3'),

@@ -69,7 +69,7 @@ async function gatherContext(): Promise<Record<string, any>> {
 
   const outcomes = await query(
     `SELECT status, COUNT(*) as count
-     FROM opportunities
+     FROM opportunity_current_state
      WHERE created_at >= ${since}
      GROUP BY status ORDER BY count DESC`
   );
@@ -80,7 +80,7 @@ async function gatherContext(): Promise<Record<string, any>> {
             SUM(CASE WHEN status IN ('pursue','building','shipped') THEN 1 ELSE 0 END) as pursued,
             SUM(CASE WHEN status = 'shipped' THEN 1 ELSE 0 END) as shipped,
             ROUND(AVG(viability_score)) as avg_viability
-     FROM opportunities
+     FROM opportunity_current_state
      WHERE created_at >= ${since}
      GROUP BY source ORDER BY pursued DESC`
   );
@@ -115,7 +115,7 @@ async function gatherContext(): Promise<Record<string, any>> {
        COUNT(*) FILTER (WHERE status = 'killed') as killed,
        COUNT(*) FILTER (WHERE status IN ('pursue','building','shipped')) as pursued,
        COUNT(*) FILTER (WHERE status = 'discarded') as discarded
-     FROM opportunities
+     FROM opportunity_current_state
      WHERE created_at >= ${since}`
   );
 

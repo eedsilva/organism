@@ -28,13 +28,13 @@ export async function generateDigest(): Promise<string> {
   const spendSummary = await getCloudSpendSummary();
   const spendPct = spendSummary.budget > 0 ? Math.round((spendSummary.today / spendSummary.budget) * 100) : 0;
 
-  const pipeline = await query(`SELECT status, COUNT(*) as count FROM opportunities GROUP BY status`);
+  const pipeline = await query(`SELECT status, COUNT(*) as count FROM opportunity_current_state GROUP BY status`);
   const pipelineMap: Record<string, number> = {};
   for (const row of pipeline.rows) pipelineMap[row.status] = Number(row.count);
 
   const topOpportunities = await query(
     `SELECT title, source, viability_score, pain_score, wtp_score
-     FROM opportunities WHERE status = 'new'
+     FROM opportunity_current_state WHERE status = 'new'
      ORDER BY viability_score DESC LIMIT 5`
   );
 
@@ -47,7 +47,7 @@ export async function generateDigest(): Promise<string> {
   );
 
   const zombies = await query(
-    `SELECT title FROM opportunities
+    `SELECT title FROM opportunity_current_state
      WHERE status = 'building' AND created_at < NOW() - INTERVAL '5 days'`
   );
 
@@ -116,7 +116,7 @@ export async function generateDigest(): Promise<string> {
     push("", "  ⚠️  ZOMBIE PRODUCTS (>5 days, no revenue)", hr());
     for (const z of zombies.rows) push(`  KILL → ${z.title.slice(0, 60)}`);
     push("", "  SQL to kill:",
-      "  UPDATE opportunities SET status = 'killed'",
+      "  transitionOpportunity(id, 'killed')",
       "  WHERE status = 'building' AND created_at < NOW() - INTERVAL '5 days';"
     );
   }

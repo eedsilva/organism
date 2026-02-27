@@ -12,6 +12,7 @@
   "exclude": [
     "node_modules",
     "products",
-    "mission-control"
+    "mission-control",
+    "organism-ui-chassis"
   ]
 }

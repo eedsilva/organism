@@ -28,7 +28,7 @@ interface ChildSpec {
 
 export async function proposeReplication(opportunityId: number): Promise<ChildSpec | null> {
     const opp = await query(
-        `SELECT title, raw_text, plan FROM opportunities WHERE id = $1`,
+        `SELECT title, raw_text, plan FROM opportunity_current_state WHERE id = $1`,
         [opportunityId]
     );
 
@@ -82,133 +82,89 @@ export async function spawnChild(specId: string) {
     }
 
     const spec: ChildSpec = log.rows[0].spec;
-    const childName = `organism-${spec.id}`;
+    const childSchema = `colony_${spec.id}`;
 
-    // We place children in a `colonies/` directory next to the parent
-    const parentDir = path.resolve(__dirname, "../..");
-    const coloniesDir = path.join(parentDir, "colonies");
-    const childDir = path.join(coloniesDir, childName);
-
-    console.log(`\n🧬 Spawning child: ${childName}...`);
+    console.log(`\n🧬 Spawning colony schema: ${childSchema}...`);
 
     try {
-        if (!fs.existsSync(coloniesDir)) {
-            fs.mkdirSync(coloniesDir);
+        const { pool } = await import("../state/db");
+        const client = await pool.connect();
+        try {
+            // 1. Setup Child Database Schema
+            console.log(`  └─ Bootstrapping neural pathways (schema ${childSchema})...`);
+            await client.query(`CREATE SCHEMA IF NOT EXISTS ${childSchema}`);
+            await client.query(`SET search_path TO ${childSchema}, public`);
+
+            const schemaSql = fs.readFileSync(path.join(__dirname, "../state/schema.sql"), "utf-8");
+
+            // Execute schema directly; it will build tables in childSchema
+            const statements = schemaSql.split(/;(?=(?:[^$]*[$][^$]*[$])*[^$]*$)/g);
+            for (const stmt of statements) {
+                const trimmed = stmt.trim();
+                if (trimmed && !trimmed.startsWith("--")) {
+                    await client.query(trimmed);
+                }
+            }
+
+            // 2. Inject the Child Spec (Policy Overrides)
+            console.log(`  └─ Encoding specific purpose (Spec)...`);
+            for (const [key, val] of Object.entries(spec.policy_overrides)) {
+                const v = typeof val === 'object' ? JSON.stringify(val) : String(val);
+                await client.query(
+                    `INSERT INTO policies (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+                    [key, v]
+                );
+            }
+
+            // Also override the niche config so the colony knows its purpose
+            await client.query(`INSERT INTO policies (key, value) VALUES ('colony_niche', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [spec.niche]);
+
+            // 3. Register Colony in main registry
+            await client.query(`SET search_path TO public`);
+            await client.query(
+                `INSERT INTO colonies (id, niche, schema_name, policy_overrides) VALUES ($1, $2, $3, $4)`,
+                [spec.id, spec.niche, childSchema, JSON.stringify(spec.policy_overrides)]
+            );
+        } finally {
+            client.release();
         }
 
-        // 1. Git Clone (or copy) the current codebase
-        // For local dev, a fast dir copy is best. In prod, a git clone from the main repo is cleaner.
-        console.log(`  └─ Copying DNA (codebase)...`);
-        await execAsync(`cp -R ${path.resolve(__dirname, "..")} ${childDir}`);
+        // 4. Spawn Node.js Worker Thread
+        console.log(`  └─ Starting dedicated Node.js Worker Thread...`);
+        const { Worker } = await import("worker_threads");
 
-        // Clean up copied artifacts that shouldn't transfer
-        await execAsync(`rm -rf ${childDir}/node_modules ${childDir}/dist ${childDir}/products ${childDir}/.env`);
+        const worker = new Worker(path.resolve(__dirname, "heartbeat.ts"), {
+            // Use ts-node to execute the worker file
+            execArgv: ["-r", "ts-node/register/transpile-only"],
+            env: { ...process.env, COLONY_SCHEMA: childSchema }
+        });
 
-        // 2. Setup Child Database
-        console.log(`  └─ Bootstrapping neural pathways (database)...`);
-        const childDbName = childName.replace(/-/g, "_");
+        worker.on("error", (err) => {
+            console.error(`❌ Colony Worker [${childSchema}] crashed:`, err);
+        });
 
-        // Start a dedicated Postgres container for the child
-        await execAsync(`
-            docker run --name ${childDbName}-postgres \
-            -e POSTGRES_USER=${childDbName} \
-            -e POSTGRES_PASSWORD=${childDbName}_secret \
-            -e POSTGRES_DB=${childDbName} \
-            -p $((5432 + Math.floor(Math.random() * 1000))):5432 \
-            -d postgres:15-alpine
-        `);
+        worker.on("exit", (code) => {
+            console.log(`Colony Worker [${childSchema}] exited with code ${code}.`);
+        });
 
-        // Wait for DB to boot
-        await new Promise(r => setTimeout(r, 3000));
-
-        // 4. Generate custom .env for the child
-        console.log(`  └─ Writing environmental adaptations (.env)...`);
-
-        // Parent shares credentials but uses isolated DB
-        const parentEnvPath = path.resolve(__dirname, "../.env");
-        let envContent = fs.existsSync(parentEnvPath) ? fs.readFileSync(parentEnvPath, 'utf8') : "";
-
-        // Override DB connection
-        envContent = envContent.replace(/DB_USER=.*/, `DB_USER=${childDbName}`);
-        envContent = envContent.replace(/DB_PASSWORD=.*/, `DB_PASSWORD=${childDbName}_secret`);
-        envContent = envContent.replace(/DB_NAME=.*/, `DB_NAME=${childDbName}`);
-        // Ensure child doesn't conflict ports if any web servers are added later
-
-        fs.writeFileSync(path.join(childDir, ".env"), envContent);
-
-        // 5. Inject the Child Spec as its core directive
-        console.log(`  └─ Encoding specific purpose (Spec)...`);
-        fs.writeFileSync(path.join(childDir, "ABOUT_ME.md"),
-            `# ${childName}\n\n**Niche:** ${spec.niche}\n\n**Core Pain:** ${spec.core_pain}\n\nSpawned from Parent Organism on ${new Date().toISOString()}`
-        );
-
-        // Modify the child's seed data to apply policy overrides
-        const seedPath = path.join(childDir, "state", "seed_policies.sql");
-        let seedSql = "";
-        for (const [key, val] of Object.entries(spec.policy_overrides)) {
-            const v = typeof val === 'string' ? `'${val}'` : val;
-            seedSql += `INSERT INTO policies (key, value) VALUES ('${key}', ${v}::text) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;\n`;
-        }
-        fs.writeFileSync(seedPath, seedSql);
-
-
-        // 6. Provide the launch script for the Operator
-        fs.writeFileSync(path.join(childDir, "START.md"),
-            `# Launching ${childName}
-
-This is an independent cellular offspring of the original Automaton, wired to hunt purely in the following niche:
-**${spec.niche}**
-
-### 1. Enter the cell
-\`\`\`bash
-cd ${childDir}
-\`\`\`
-
-### 2. Initialize the schema
-\`\`\`bash
-docker exec -i ${childDbName}-postgres psql -U ${childDbName} -d ${childDbName} < state/schema.sql
-\`\`\`
-
-### 3. Apply niche-specific policy overrides
-\`\`\`bash
-docker exec -i ${childDbName}-postgres psql -U ${childDbName} -d ${childDbName} < state/seed_policies.sql
-\`\`\`
-
-### 4. Start the heartbeat
-\`\`\`bash
-npm install
-npm run start
-\`\`\`
-
-### 5. Talk to the child
-\`\`\`bash
-npm run talk
-\`\`\`
-
----
-Parent: organism (spawned at ${new Date().toISOString()})
-Spec ID: ${specId}
-`
-        );
-
-        // 7. Mark as spawned
+        // 5. Mark as spawned
         await query(
             `UPDATE replication_log SET status = 'spawned', child_path = $1 WHERE spec_id = $2`,
-            [childDir, specId]
-        );
-        await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
-            ["colony_spawned", { spec_id: specId, child_name: childName, child_path: childDir }]
+            [`WorkerThread:${childSchema}`, specId]
         );
 
-        console.log(`  ✅ Colony spawned: ${childDir}`);
-        console.log(`  📄 Follow ${childDir}/START.md to launch it.\n`);
+        await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
+            ["colony_spawned", { spec_id: specId, schema_name: childSchema, mechanism: "worker_thread" }]
+        );
+
+        console.log(`  ✅ Colony active! Operating locally on schema: ${childSchema}`);
 
         await sendPushNotification(
-            `Colony Spawned: ${childName}`,
-            `The replication protocol successfully spawned ${childName}.\n\nPath: ${childDir}\nNiche: ${spec.niche}\n\nFollow START.md within the directory to launch the new organism.`
+            `Colony Spawned: ${spec.id}`,
+            `The replication protocol successfully spawned a colony thread.\nSchema: ${childSchema}\nNiche: ${spec.niche}`
         );
 
-        return `✅ *${childName}* spawned at \`${childDir}\`\nFollow \`START.md\` to launch it.`;
+        return `✅ *Colony ${spec.id}* spawned on schema \`${childSchema}\` via Node.js worker thread.`;
 
     } catch (err: any) {
         await query(`UPDATE replication_log SET status = 'failed' WHERE spec_id = $1`, [specId]);

@@ -9,19 +9,15 @@ If it fails to generate revenue, it adapts or dies.
 
 ## What It Does
 
-Organism runs in continuous cycles:
+Organism runs as a distributed, event-driven automaton through several decoupled components:
 
-1. **Self-check** – validates system health
-2. **Budget check** – enforces daily inference limits
-3. **Sensing** – scans public sources for economic pain
-4. **Scoring** – ranks opportunities
-5. **Planning** – generates validation strategies
-6. **Decision** – pursue or discard
-7. **Build / Outreach** – validate demand
-8. **Revenue tracking** – Stripe webhook
-9. **Reflection** – policy adjustment
+1. **Heartbeat Daemon (`kernel/heartbeat.ts`)** – The main loop. Senses market pain across Hacker News, Upwork, and G2, logs opportunities.
+2. **LLM Worker Pool (`kernel/workers/llm.ts`)** – Asynchronously scores opportunities, ranks viability, and plans go-to-market strategies using `gpt-4o-mini` to keep costs low.
+3. **Validation Worker Pool (`kernel/workers/validation.ts`)** – Concurrently launches preorders (up to \`max_concurrent_validations\`) and builds final products for paying users.
+4. **Webhook Server (`kernel/webhook.ts`)** – Captures real-time waitlist signups and broadcasts SSE events to the UI.
+5. **Mission Control UI (`mission-control/`)** – The operator dashboard to monitor the organism in real-time.
 
-All state is persisted in PostgreSQL.
+All state transitions use event-sourcing stored in PostgreSQL.
 
 ---
 
@@ -30,17 +26,13 @@ All state is persisted in PostgreSQL.
 ### Runtime
 
 * Node.js (TypeScript)
-* Express (webhook + landing endpoints)
-* Local LLM (Ollama)
-* Cloud LLM (optional escalation)
+* Express (Webhook Server & SSE)
+* Node.js Worker Threads (for isolated sub-agent Colonies)
+* Next.js (Mission Control & generated Product templates)
+* Stripe API (Revenue signal)
 
-### Infrastructure
-
-* PostgreSQL (Docker)
-* Redis (optional)
-* Next.js (product layer)
-* Vercel (deployment)
-* Stripe (revenue signal)
+### The "UI Chassis"
+Organism uses a highly optimized, pre-built React/Tailwind/Framer Motion template called `organism-ui-chassis` for product validation. Instead of slowly generating flawed React code for every idea, the LLM generates a simple `chassis.config.json` configuration file that dictates copy, colors, and layout structure—drastically reducing API inference costs and ensuring pixel-perfect output.
 
 ---
 
@@ -49,11 +41,11 @@ All state is persisted in PostgreSQL.
 ### Opportunity Lifecycle
 
 ```
-new → reviewing → (discarded | pursue)
-pursue → building → (completed | failed)
+new → queued_for_planning → (discarded | pursue)
+pursue → building → (completed | failed | killed)
 ```
 
-Only high-viability opportunities move forward.
+Only high-viability opportunities move forward. The event-sourced state machine logs every transition in `opportunity_events`.
 
 ---
 
@@ -63,75 +55,85 @@ The organism does not build first.
 
 It validates in stages:
 
-1. **Signal detection**
-2. **Outreach drafts**
-3. **Preorder page (Stripe link)**
-4. **Payment received**
-5. **Then build MVP**
+1. **Signal detection** (Upwork, G2, Hacker News)
+2. **Outreach drafts** (Reddit etc.)
+3. **Preorder page** (Chassis JSON generation)
+4. **Payment/Lead received** (Webhook capture)
+5. **Then build MVP** (Full LLM product generation)
 
 One real payment is worth more than 100 signups.
 
 ---
 
-### Revenue = Survival
+### Colony Architecture (Self-Replication)
 
-Stripe webhook events update `metrics_daily`.
-
-Revenue > 0 means:
-
-* The organism found real value.
-* The current hunting strategy works.
-
-No revenue triggers:
-
-* Threshold adjustments
-* Sensing expansion
-* Budget reduction
+When an Organism proves successful in a specific niche, it can spawn child sub-agents (**Colonies**).
+Instead of heavy Docker containers, colonies use **Node.js Worker Threads** mapped to **isolated PostgreSQL schemas** (`colony_xyz`). This allows parent and children to share infrastructure while operating with mutated, independent environments and policy parameters.
 
 ---
 
 ## Project Structure
 
 ```
-/kernel        → core loop logic
-/sense         → HN, Reddit sensors
-/cognition     → LLM integration
-/scripts       → migrations / reset
-/migrations    → SQL evolution
-/products      → generated product artifacts
-/state         → schema + DB utilities
+/kernel            → Core logic and Event loop
+  /workers         → LLM and Validation async pools
+/sense             → HN, G2, Upwork sensors
+/cognition         → LLM routing (Cloud/Local)
+/scripts           → Migrations and utilities
+/products          → Generated product artifacts
+/state             → DB Schema, policies, event-sourcing routines
+/mission-control   → Operator Dashboard UI
+/organism-ui-chassis → The Firmware product template
+/colonies          → Forked worker thread workspaces
 ```
 
 ---
 
-## Setup
+## Setup & Running
 
-### 1. Start Infrastructure
+### 1. Start Infrastructure (PostgreSQL)
 
 ```bash
-docker compose up -d
+npm run infra:start
 ```
 
-### 2. Reset Database (dev)
+### 2. Run Database Migrations
+
+Apply the schema and baseline policies. Safe to run multiple times.
 
 ```bash
-docker exec -it organism-postgres psql -U organism -d organism -c "
-DROP SCHEMA public CASCADE;
-CREATE SCHEMA public;
-"
-
-docker exec -i organism-postgres psql -U organism -d organism < state/schema.sql
+npm run db:migrate
 ```
 
-### 3. Start Heartbeat
+### 3. Start the Webhook Server
+
+In a new terminal, start the webhook server to handle incoming lead captures:
 
 ```bash
-npx ts-node kernel/heartbeat.ts
+npm run webhook
+```
+
+### 4. Start the Organism Heartbeat
+
+In the main terminal, start the daemon (this spins up the LLM and Validation worker pools automatically):
+
+```bash
+npm start
+```
+
+### 5. Start Mission Control (UI)
+
+In a third terminal, start the operator dashboard to watch the organism work:
+
+```bash
+npm run mission-control
 ```
 
 ---
 
-## Environment Variables
+## Configuration
+
+Set up your `.env` file first:
 
 ```
 DB_HOST=localhost
@@ -139,59 +141,20 @@ DB_PORT=5432
 DB_USER=organism
 DB_PASSWORD=organism
 DB_NAME=organism
+WEBHOOK_PORT=3001
 
 HEARTBEAT_INTERVAL_MS=15000
-DAILY_LLM_LIMIT_USD=5
-STRIPE_SECRET_KEY=...
+OPENAI_API_KEY=sk-...
 ```
-
----
-
-## Reflection Engine (Planned)
-
-Every 7 days:
-
-* Analyze outcomes
-* Adjust thresholds
-* Reweight sensing sources
-* Optimize budget allocation
-
-Policies stored in DB.
-
-The organism modifies its own strategy.
-
----
-
-## Constraints
-
-* Max 1 active build
-* Max 3 outreach drafts per day
-* Kill idea after 5 days no traction
-* Preorder before MVP
-* Budget enforced daily
-
----
-
-## Current Status
-
-* [x] Heartbeat loop
-* [x] Budget governor
-* [x] Hacker News sensing
-* [x] Reddit sensing
-* [ ] Stripe webhook
-* [ ] Preorder-first validation
-* [ ] Weekly reflection engine
 
 ---
 
 ## Philosophy
 
-This is not a SaaS starter template.
-
 This is a closed-loop economic system.
 
-The goal is not to build features.
-The goal is to create revenue-generating behavior.
+The goal is not to blindly generate code.
+The goal is to create autonomous revenue-generating behavior.
 
 ---
 

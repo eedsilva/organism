@@ -1,0 +1,16 @@
+{
+    "product_name": "InvoiceMate",
+    "headline": "Stop copying invoices by hand",
+    "subheadline": "We built the tool your accountant wishes existed. Save 10 hours every week.",
+    "pain_points": [
+        "2 hours wasted every Monday morning",
+        "Manual data entry errors costing you money",
+        "Missing receipts during tax season"
+    ],
+    "cta_text": "Join 47 accountants on the waitlist",
+    "social_proof": "Join 47 accountants already on board",
+    "color_primary": "#6366f1",
+    "color_accent": "#8b5cf6",
+    "lead_webhook_url": "http://localhost:3001/signal/lead/999",
+    "opportunity_id": 999
+}

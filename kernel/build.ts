@@ -1,7 +1,8 @@
-import { callBrain, callLocalBrain } from "../cognition/llm";
+import { callBrain } from "../cognition/llm";
 import { query } from "../state/db";
 import { draftOutreach } from "./reach";
 import { sendPushNotification } from "./notify";
+import { transitionOpportunity } from "./opportunity";
 import * as fs from "fs";
 import * as path from "path";
 import { exec } from "child_process";
@@ -31,195 +32,69 @@ const PREORDER_WINDOW_HOURS = 48;
 
 export async function launchPreorder(opportunity: any) {
   const prompt = `
-You are building a premium, conversion-optimized landing page to validate a B2B product idea via a waitlist/email capture.
+You are configuring a high-converting B2B SaaS landing page template.
 High-intent email conversions = we build it. Zero conversions = we kill it.
 
 OPPORTUNITY: ${opportunity.title}
 CONTEXT: ${opportunity.raw_text?.slice(0, 1000) || ""}
 PLAN: ${opportunity.plan || ""}
 
-Generate a complete Next.js page component (app/page.tsx) that acts as a world-class single-page "chassis" template. 
-Aesthetics must be breathtaking, dark-themed, and highly professional. Use 'lucide-react' for icons. 
-It must look like a real, premium B2B SaaS company.
-
-Requirements for page.tsx:
-- Hero Section: Massive value prop headline (pain solved), subheadline, and an interactive email input field with a primary CTA button "Join Waitlist" (it should be an HTML form that posts or simulates a post).
-- Social Proof Section: "Trusted by early access members" or "Join [X] exact target audience" style bar.
-- Problem/Agitation Section: 3 sharp bullet points hitting their specific pain points.
-- Solution/Benefits Section: How this product fixes it (benefits, not features).
-- Pricing Section: "Lifetime Early Access — $${PREORDER_PRICE} one-time for waitlist members, then $39/month when public."
-- Final CTA: "Built by an indie dev. Join the waitlist to get early access."
-- Styling: Use standard Tailwind CSS utilities exclusively (e.g., bg-zinc-950, text-zinc-100, bg-gradient-to-r, shadow-xl). Do NOT use generic placeholder names like 'Acme Corp'.
-
-Also provide metadata for deployment:
-- product_name: short, memorable, lowercase domain-friendly (e.g., "syncpro")
-- tagline: one line, problem-first
-- cold_outreach: 3-sentence DM to send to someone who posted about this pain
-- reddit_communities: 2 most relevant subreddits to post this in
-
-Respond ONLY in valid JSON, no markdown formatting blocks:
+Provide the configuration ONLY in valid JSON, no markdown blocks:
 {
-  "product_name": "...",
-  "tagline": "...",
-  "page_code": "import { ArrowRight, CheckCircle } from 'lucide-react';\\n\\nexport default function Page() {\\n  return (\\n    <main className=\\"min-h-screen bg-zinc-950 text-white\\">\\n...",
-  "cold_outreach": "...",
-  "reddit_communities": ["r/...", "r/..."]
+  "product_name": "short, memorable, lowercase (e.g. syncpro)",
+  "headline": "Massive value prop headline (max 8 words)",
+  "subheadline": "We built the tool your accountant wishes existed. Save 10 hours.",
+  "pain_points": [
+    "Pain point 1",
+    "Pain point 2",
+    "Pain point 3"
+  ],
+  "cta_text": "Join the waitlist",
+  "social_proof": "Trusted by early access members",
+  "color_primary": "#6366f1",
+  "color_accent": "#8b5cf6",
+  "lead_webhook_url": "http://localhost:3001/signal/lead/${opportunity.id}",
+  "opportunity_id": ${opportunity.id},
+  "cold_outreach": "3-sentence DM to send to someone who posted about this pain",
+  "reddit_communities": ["r/SaaS", "r/Entrepreneur"]
 }
 `;
 
   try {
-    // Code generation — use cloud (GPT-4o) when budget allows, qwen2.5-coder as Ollama fallback
-    const response = await callBrain(prompt, `preorder page for: ${opportunity.title?.slice(0, 50)}`, false, "code");
+    // Generate config. Use "chat" taskType to default to gpt-4o-mini for cost efficiency.
+    const response = await callBrain(prompt, `preorder config for: ${opportunity.title?.slice(0, 50)}`, false, "chat");
     let parsed: any = null;
 
     try {
       const clean = response.replace(/```json|```/g, "").trim();
       parsed = JSON.parse(clean);
     } catch {
-      // Brain didn't return clean JSON — store raw and continue
       await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
         ["build_json_parse_fail", { opportunity_id: opportunity.id, raw: response.slice(0, 500) }]);
+      throw new Error("Failed to parse chassis config from LLM.");
     }
 
-    // Write product folder
     const folderName = `product_${opportunity.id}_preorder`;
     const folderPath = path.join("products", folderName);
+
     if (!fs.existsSync("products")) fs.mkdirSync("products");
-    if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath);
 
-    const appDir = path.join(folderPath, "src", "app");
-    fs.mkdirSync(appDir, { recursive: true });
+    // Copy the pre-built Chassis template instead of generating boilerplate
+    const chassisSrc = path.join(process.cwd(), "organism-ui-chassis");
+    await execAsync(`cp -R "${chassisSrc}" "${folderPath}"`);
 
-    // Scaffold Next.js Chassis setup
-    if (parsed?.page_code) {
-      fs.writeFileSync(path.join(appDir, "page.tsx"), parsed.page_code);
-    }
-
-    fs.writeFileSync(path.join(appDir, "globals.css"), `
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  background-color: #09090b;
-  color: #fafafa;
-}
-    `.trim());
-
-    fs.writeFileSync(path.join(appDir, "layout.tsx"), `
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import './globals.css';
-
-const inter = Inter({ subsets: ['latin'] });
-
-export const metadata: Metadata = {
-  title: '${parsed?.product_name || "Preorder"}',
-  description: '${parsed?.tagline || "Early access"}',
-};
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html lang="en" className="dark">
-      <head>
-        <script defer data-domain="${parsed?.product_name || "preorder"}.com" src="https://plausible.io/js/script.js"></script>
-      </head>
-      <body className={inter.className}>{children}</body>
-    </html>
-  );
-}
-    `.trim());
-
-    fs.writeFileSync(path.join(folderPath, "package.json"), JSON.stringify({
-      name: parsed?.product_name || "preorder-chassis",
-      version: "0.1.0",
-      private: true,
-      scripts: {
-        dev: "next dev",
-        build: "next build",
-        start: "next start"
-      },
-      dependencies: {
-        "lucide-react": "^0.344.0",
-        "next": "14.1.0",
-        "react": "^18",
-        "react-dom": "^18"
-      },
-      devDependencies: {
-        "@types/node": "^20",
-        "@types/react": "^18",
-        "@types/react-dom": "^18",
-        "autoprefixer": "^10.0.1",
-        "postcss": "^8",
-        "tailwindcss": "^3.3.0",
-        "typescript": "^5"
-      }
-    }, null, 2));
-
-    fs.writeFileSync(path.join(folderPath, "tailwind.config.ts"), `
-import type { Config } from "tailwindcss";
-
-const config: Config = {
-  content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
-  theme: {
-    extend: {},
-  },
-  plugins: [],
-};
-export default config;
-    `.trim());
-
-    fs.writeFileSync(path.join(folderPath, "tsconfig.json"), JSON.stringify({
-      compilerOptions: {
-        target: "es5", lib: ["dom", "dom.iterable", "esnext"],
-        allowJs: true, skipLibCheck: true, strict: true,
-        noEmit: true, esModuleInterop: true, module: "esnext",
-        moduleResolution: "bundler", resolveJsonModule: true,
-        isolatedModules: true, jsx: "preserve", incremental: true,
-        plugins: [{ name: "next" }],
-        paths: { "@/*": ["./src/*"] }
-      },
-      include: ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-      exclude: ["node_modules"]
-    }, null, 2));
+    // Inject the generated config
+    fs.writeFileSync(path.join(folderPath, "chassis.config.json"), JSON.stringify(parsed, null, 2));
 
     if (parsed?.cold_outreach) {
       fs.writeFileSync(path.join(folderPath, "cold_outreach.txt"), parsed.cold_outreach);
     }
 
-    fs.writeFileSync(path.join(folderPath, "README.md"), `
-# ${parsed?.product_name || opportunity.title} (Preorder Chassis)
+    // Mark as building
+    await transitionOpportunity(opportunity.id, 'building');
 
-**Tagline:** ${parsed?.tagline || ""}
-**Reddit targets:** ${(parsed?.reddit_communities || []).join(", ")}
-
-## Preorder Steps (YOU must do these)
-1. Ensure the waitlist form logic in \`src/app/page.tsx\` posts to your email collection system (or just replace it with a simple mailto:/typeform link).
-2. Run \`npm i\` and deploy to Vercel: \`vercel --prod\`
-3. Post the outreach content (check reach_log or latest_digest.md)
-4. Wait 48 hours
-5. 1+ waitlist signup = reply here and we build the real product
-6. 0 signups = run: UPDATE opportunities SET status='killed' WHERE id=${opportunity.id};
-
-## Files
-- \`src/app/page.tsx\` — landing page, configure waitlist action before deploying
-- \`cold_outreach.txt\` — DM template for direct outreach
-`.trim());
-
-    // Mark as building (awaiting preorder)
-    await query(`UPDATE opportunities SET status = 'building' WHERE id = $1`, [opportunity.id]);
-
-    // Log the preorder launch
     await query(`INSERT INTO reach_log (opportunity_id, channel, content, status) VALUES ($1, $2, $3, $4)`,
-      [opportunity.id, "preorder", `${parsed?.product_name}\n${parsed?.tagline}\nAction: Join Waitlist on site`, "drafted"]
+      [opportunity.id, "preorder", `${parsed?.product_name}\n${parsed?.headline}\nAction: Join Waitlist on site`, "drafted"]
     );
 
     await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
@@ -231,7 +106,7 @@ export default config;
       }]
     );
 
-    console.log(`  💳 Waitlist page ready: ${parsed?.product_name || opportunity.title}`);
+    console.log(`  💳 Waitlist config ready: ${parsed?.product_name || opportunity.title}`);
     console.log(`  📁 Folder: ${folderPath}`);
 
     let deployUrl = "";
@@ -249,11 +124,10 @@ export default config;
     }
 
     await sendPushNotification(
-      `Waitlist Page Launched: ${parsed?.product_name || 'Anonymous Project'}`,
-      `A new waitlist landing page was generated for opportunity #${opportunity.id}.\n\nTitle: ${opportunity.title}\nDeploy path: ${folderPath}\nURL: ${deployUrl || 'Awaiting manual deploy'}\n\nPlease verify the form logic to start validation.`
+      `Waitlist Page Configured: ${parsed?.product_name || 'Anonymous Project'}`,
+      `A new waitlist chassis was configured for opportunity #${opportunity.id}.\n\nDeploy path: ${folderPath}\nURL: ${deployUrl || 'Awaiting manual deploy'}`
     );
 
-    // Draft outreach immediately
     await draftOutreach({ ...opportunity, plan: opportunity.plan, product_name: parsed?.product_name });
 
     return parsed;
@@ -262,7 +136,7 @@ export default config;
     await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
       ["build_error", { error: err.message, opportunity_id: opportunity.id }]
     );
-    await query(`UPDATE opportunities SET status = 'error' WHERE id = $1`, [opportunity.id]);
+    await transitionOpportunity(opportunity.id, 'error', { error: err.message });
     return null;
   }
 }
@@ -291,8 +165,8 @@ export async function checkPreorderWindows() {
     );
 
     if (payment.rows.length > 0) {
-      // Payment received — promote to full build
-      await query(`UPDATE opportunities SET status = 'pursue' WHERE id = $1`, [row.opportunity_id]);
+      // Validated! We can build the real product.
+      await transitionOpportunity(row.opportunity_id, 'pursue', { reason: 'payment received' });
       await query(`UPDATE reach_log SET status = 'converted' WHERE id = $1`, [row.reach_id]);
       await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
         ["preorder_converted", { opportunity_id: row.opportunity_id, hours_live: row.hours_live }]
@@ -304,8 +178,8 @@ export async function checkPreorderWindows() {
         `Payment was detected for opportunity #${row.opportunity_id} within ${Math.round(Number(row.hours_live))}h.\n\nThe Organism is now building the real product.`
       );
     } else {
-      // No payment — kill it
-      await query(`UPDATE opportunities SET status = 'killed' WHERE id = $1`, [row.opportunity_id]);
+      // Failed validation. Kill it.
+      await transitionOpportunity(row.opportunity_id, 'killed', { reason: 'preorder window expired with no sales' });
       await query(`UPDATE reach_log SET status = 'expired' WHERE id = $1`, [row.reach_id]);
       await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
         ["preorder_killed", { opportunity_id: row.opportunity_id, hours_live: row.hours_live }]
@@ -498,7 +372,8 @@ UPDATE opportunities SET status = 'shipped' WHERE id = ${opportunity.id};
 \`\`\`
 `.trim());
 
-    await query(`UPDATE opportunities SET status = 'shipped' WHERE id = $1`, [opportunity.id]);
+    // It's shipped!
+    await transitionOpportunity(opportunity.id, 'shipped', { folder: folderPath });
     await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
       ["product_built", { opportunity_id: opportunity.id, folder: folderPath, product_name: productName }]
     );
@@ -535,7 +410,7 @@ UPDATE opportunities SET status = 'shipped' WHERE id = ${opportunity.id};
 
 // ── Zombie cleanup — auto-kills stale building opportunities ─────────────────
 
-async function killZombies() {
+export async function killZombies() {
   const zombieDaysResult = await query(
     `SELECT value FROM policies WHERE key = 'zombie_kill_days'`
   );
@@ -550,6 +425,9 @@ async function killZombies() {
   );
 
   for (const z of zombies.rows) {
+    // Note: since this is an UPDATE Opportunities query, I should use transitionOpportunity, but I can fix that as part of this edit.
+    await transitionOpportunity(z.id, 'killed', { reason: 'zombie > 5 days' });
+
     await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
       ["zombie_killed", { opportunity_id: z.id, title: z.title, after_days: days }]
     );
@@ -561,44 +439,4 @@ async function killZombies() {
   }
 }
 
-// ── Main entry point called by cycle.ts ─────────────────────────────────────
-
-export async function attemptBuild() {
-  // 0. Kill zombies first — free up the build slot before checking limits
-  await killZombies();
-
-  // Check active build limit
-  const activeBuilds = await query(
-    `SELECT COUNT(*) as count FROM opportunities WHERE status = 'building'`
-  );
-  const maxBuilds = 1;
-
-  // Always check expired preorder windows first
-  await checkPreorderWindows();
-
-  // Check if any paid preorders are now ready to build
-  const readyToBuild = await query(
-    `SELECT id, title, plan, raw_text FROM opportunities WHERE status = 'pursue' 
-     AND id IN (SELECT opportunity_id FROM reach_log WHERE channel = 'preorder' AND status = 'converted')
-     LIMIT 1`
-  );
-
-  if (readyToBuild.rows.length > 0) {
-    await buildProduct(readyToBuild.rows[0]);
-    return;
-  }
-
-  // Launch new preorder if under build limit
-  if (Number(activeBuilds.rows[0].count) >= maxBuilds) {
-    console.log(`  ⏸  Max active builds reached (${maxBuilds}). Waiting for preorder results.`);
-    return;
-  }
-
-  const opportunity = await query(
-    `SELECT id, title, plan, raw_text FROM opportunities WHERE status = 'pursue' LIMIT 1`
-  );
-
-  if (opportunity.rows.length > 0) {
-    await launchPreorder(opportunity.rows[0]);
-  }
-}
+// ── Main entry point is now handled by workers/validation.ts ─────────

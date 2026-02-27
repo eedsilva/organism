@@ -20,7 +20,7 @@ export async function getStatus(): Promise<string> {
         query(`SELECT COALESCE(SUM(signups),0) as total_signups FROM metrics_daily`),
         query(`SELECT value FROM policies WHERE key = 'daily_budget_usd'`),
         query(`SELECT COALESCE(SUM(inference_cost_usd),0) as burn FROM cycles WHERE DATE(started_at) = CURRENT_DATE`),
-        query(`SELECT status, COUNT(*) as count FROM opportunities GROUP BY status ORDER BY count DESC`),
+        query(`SELECT status, COUNT(*) as count FROM opportunity_current_state GROUP BY status ORDER BY count DESC`),
         query(`SELECT type, COUNT(*) as n FROM events
            WHERE DATE(created_at) = CURRENT_DATE
              AND (type LIKE '%error%' OR type LIKE '%fail%' OR type LIKE '%blocked%')
@@ -58,7 +58,7 @@ export async function getStatus(): Promise<string> {
 export async function getTop(): Promise<string> {
     const rows = await query(
         `SELECT title, source, viability_score, pain_score, wtp_score
-     FROM opportunities
+     FROM opportunity_current_state
      WHERE status IN ('new','reviewing')
      ORDER BY viability_score DESC LIMIT 5`
     );
@@ -77,7 +77,7 @@ export async function getTop(): Promise<string> {
 export async function getPipeline(): Promise<string> {
     const rows = await query(
         `SELECT title, source, status, viability_score, created_at
-     FROM opportunities ORDER BY created_at DESC LIMIT 15`
+     FROM opportunity_current_state ORDER BY created_at DESC LIMIT 15`
     );
 
     if (rows.rows.length === 0) return "Pipeline is empty.";
@@ -270,7 +270,7 @@ export async function markPostedOutreach(id: number, url: string): Promise<strin
 export async function getIdeas(): Promise<string> {
     const rows = await query(
         `SELECT id, title, source, viability_score, pain_score, wtp_score, seen_count
-     FROM opportunities
+     FROM opportunity_current_state
      WHERE status = 'new' AND (operator_rating IS NULL OR operator_rating = '')
      ORDER BY viability_score DESC LIMIT 10`
     );
@@ -288,7 +288,7 @@ export async function getIdeas(): Promise<string> {
 // ── /good <id> / /bad <id> ────────────────────────────────────────────────────
 
 export async function rateIdea(id: number, rating: "good" | "bad"): Promise<string> {
-    const res = await query(`SELECT source, title FROM opportunities WHERE id = $1`, [id]);
+    const res = await query(`SELECT source, title FROM opportunity_current_state WHERE id = $1`, [id]);
     if (res.rows.length === 0) return `❌ Opportunity #${id} not found.`;
 
     await query(`UPDATE opportunities SET operator_rating = $1 WHERE id = $2`, [rating, id]);

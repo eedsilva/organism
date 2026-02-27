@@ -1,52 +1,26 @@
 import { query } from "../state/db";
 import { sendPushNotification } from "../kernel/notify";
+import fetch from "node-fetch";
 
 /**
- * upwork.ts — Pain sensing from freelance job boards.
+ * upwork.ts — Pain sensing from real freelance job boards via RSS.
  *
- * Scrapes Upwork/Fiverr for jobs where people are paying freelancers to do
- * repetitive, manual tasks. These are prime candidates for micro-SaaS automation.
+ * Hits the Upwork RSS feed for "manual data entry" and similar queries
+ * to find people explicitly paying to solve tedious problems.
  */
-
-// Simulated list of freelance jobs. In production, this hits an Upwork RSS feed or API.
-const MOCK_UPWORK_JOBS = [
-    {
-        id: "upw_101",
-        title: "Need someone to copy data from PDFs to Excel daily",
-        budget: 500, // Fixed price or estimated total
-        description: "We receive around 50 invoices in PDF format every day. I need a freelancer to manually type the line items, totals, and dates into our main Google Sheet. This is extremely boring but Needs to be 100% accurate because of accounting.",
-        url: "https://upwork.com/jobs/copy-data",
-        posted_at: new Date().toISOString()
-    },
-    {
-        id: "upw_102",
-        title: "Update Shopify inventory from supplier CSV every hour",
-        budget: 800,
-        description: "Our dropship supplier sends us an FTP link with a CSV of current stock levels. I need someone to log in every hour, download the CSV, and match the SKUs to our Shopify store to prevent overselling.",
-        url: "https://upwork.com/jobs/shopify-inventory",
-        posted_at: new Date().toISOString()
-    },
-    {
-        id: "upw_103",
-        title: "Monitor competitor website prices",
-        budget: 300,
-        description: "Looking for a VA to check 3 specific competitor websites every morning and log their pricing for 20 of our core products into a spreadsheet so we can adjust our own.",
-        url: "https://upwork.com/jobs/competitor-prices",
-        posted_at: new Date().toISOString()
-    }
-];
 
 // ── Pain and WTP scoring ──────────────────────────────────────────────────────
 
-function scorePain(job: typeof MOCK_UPWORK_JOBS[0]): number {
-    const text = ((job.title || "") + " " + (job.description || "")).toLowerCase();
+function scorePain(title: string, description: string): number {
+    const text = (title + " " + description).toLowerCase();
     let pain = 30; // Baseline for hiring out a task
 
     const signals: [string, number][] = [
-        ["every day", 20], ["daily", 15], ["every hour", 30],
-        ["boring", 15], ["manual", 20], ["tedious", 20],
+        ["every day", 20], ["daily", 15], ["every hour", 30], ["weekly", 10],
+        ["boring", 15], ["manual", 20], ["tedious", 20], ["repetitive", 25],
         ["error", 15], ["accurate", 10], ["prevent", 10],
-        ["copy data", 20], ["spreadsheet", 10]
+        ["copy data", 20], ["spreadsheet", 10], ["data entry", 15],
+        ["api", 10], ["automate", 20], ["sync", 15]
     ];
 
     for (const [signal, score] of signals) {
@@ -56,17 +30,53 @@ function scorePain(job: typeof MOCK_UPWORK_JOBS[0]): number {
     return Math.min(pain, 100);
 }
 
-function scoreWtp(job: typeof MOCK_UPWORK_JOBS[0]): number {
+function scoreWtp(budgetMatch: RegExpMatchArray | null): number {
     let wtp = 0;
+
+    // Default WTP assuming they are willing to hire SOMEONE
+    let budget = 0;
+    if (budgetMatch && budgetMatch[1]) {
+        budget = parseInt(budgetMatch[1].replace(/,/g, ''), 10);
+    }
 
     // The budget directly indicates Willingness To Pay.
     // If they are willing to pay $500 for a manual task, they'll pay $39/mo for software.
-    if (job.budget >= 500) wtp += 80;
-    else if (job.budget >= 200) wtp += 60;
-    else if (job.budget >= 50) wtp += 30;
-    else wtp += 10;
+    if (budget >= 500) wtp += 80;
+    else if (budget >= 200) wtp += 60;
+    else if (budget >= 50) wtp += 30;
+    else wtp += 20;
 
     return Math.min(wtp, 100);
+}
+
+// Minimal regex-based RSS parser to avoid heavy XML dependencies
+function parseRSS(xml: string) {
+    const items = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+    while ((match = itemRegex.exec(xml)) !== null) {
+        const itemContent = match[1];
+
+        const titleMatch = itemContent.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/) || itemContent.match(/<title>([\s\S]*?)<\/title>/);
+        const linkMatch = itemContent.match(/<link>([\s\S]*?)<\/link>/);
+        const descMatch = itemContent.match(/<description>([\s\S]*?)<\/description>/);
+
+        let description = descMatch ? descMatch[1] : "";
+        description = description.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/, '$1');
+        // Clean some basic HTML from description
+        description = description.replace(/<[^>]*>?/gm, '');
+
+        if (titleMatch && linkMatch) {
+            items.push({
+                title: titleMatch[1].replace(/ - Upwork$/, ''),
+                link: linkMatch[1],
+                description: description,
+                // Extract budget if present in description e.g. "Budget: $500"
+                budgetMatch: description.match(/Budget:\s*\$([0-9,]+)/i) || titleMatch[1].match(/\$([0-9,]+)/)
+            });
+        }
+    }
+    return items;
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -76,51 +86,61 @@ export async function senseUpwork() {
     let errors = 0;
     const highValueFound: string[] = [];
 
-    for (const job of MOCK_UPWORK_JOBS) {
+    // Combine queries to hit specific sub-niches
+    const queries = ["manual+data+entry", "spreadsheet+automation", "copy+paste+data", "sync+inventory"];
+
+    for (const q of queries) {
         try {
-            const pain = scorePain(job);
-            const wtp = scoreWtp(job);
+            const feedUrl = `https://www.upwork.com/ab/feed/jobs/rss?q=${q}&sort=recency`;
+            const response = await fetch(feedUrl, {
+                headers: { "User-Agent": "Mozilla/5.0" }
+            });
 
-            if (pain < 40) continue; // Ignore low-pain requests that aren't recurring
-
-            // Check if we already sensed this job
-            const existing = await query(`SELECT id FROM opportunities WHERE evidence_url = $1`, [job.url]);
-            if (existing.rows.length > 0) continue;
-
-            const title = `Freelance Task: ${job.title}`;
-            const rawText = `Budget: $${job.budget}\\n\\n${job.description}`;
-
-            const res = await query(
-                `INSERT INTO opportunities 
-           (source, title, evidence_url, raw_text, pain_score, wtp_score, competition_score, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING id, viability_score`,
-                ["upwork", title, job.url, rawText, pain, wtp, 10, "new"]
-            );
-
-            inserted++;
-            const viability = res.rows[0].viability_score;
-
-            if (viability > 70) {
-                highValueFound.push(`[v:${viability}] ${title}`);
+            if (!response.ok) {
+                console.warn(`[Upwork] Failed to fetch query ${q}. Status: ${response.status}`);
+                continue;
             }
 
+            const xml = await response.text();
+            const jobs = parseRSS(xml);
+
+            for (const job of jobs) {
+                const pain = scorePain(job.title, job.description);
+                const wtp = scoreWtp(job.budgetMatch);
+
+                if (pain < 40) continue; // Ignore low-pain requests that aren't recurring
+
+                // Check if we already sensed this job
+                const existing = await query(`SELECT id FROM opportunity_current_state WHERE evidence_url = $1`, [job.link]);
+                if (existing.rows.length > 0) continue;
+
+                const budgetDisplay = job.budgetMatch ? `$${job.budgetMatch[1]}` : "Hourly/Unknown";
+                const title = `Freelance Task: ${job.title}`;
+                const rawText = `Budget: ${budgetDisplay}\\n\\n${job.description}`;
+
+                // Push to signal_queue instead of direct insertion to opportunities table
+                // This fits the new async event-driven brain
+                await query(
+                    `INSERT INTO signal_queue (source, raw_payload) VALUES ($1, $2)`,
+                    ["upwork", JSON.stringify({
+                        title: title,
+                        evidence_url: job.link,
+                        raw_text: rawText,
+                        pain_score: pain,
+                        wtp_score: wtp,
+                        competition_score: 10
+                    })]
+                );
+
+                inserted++;
+            }
         } catch (err: any) {
-            if (!err.message.includes("unique constraint")) {
-                console.error(`Error processing job ${job.id}:`, err.message);
-                errors++;
-            }
+            console.error(`[Upwork] Error processing query ${q}:`, err.message);
+            errors++;
         }
     }
 
     if (inserted > 0) {
-        console.log(`\n  ✅ Sensed ${inserted} promising freelance automation jobs (Errors: ${errors})`);
-
-        if (highValueFound.length > 0) {
-            await sendPushNotification(
-                "High-Value Automation Jobs Found",
-                `The Organism detected ${highValueFound.length} freelance tasks ripe for micro-SaaS intervention:\\n\\n${highValueFound.join("\\n")}`
-            );
-        }
+        console.log(`\n  ✅ Sensed ${inserted} promising freelance automation jobs (Errors: ${errors}) pushed to queue.`);
     }
 }

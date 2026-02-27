@@ -11,6 +11,12 @@ export const pool = new Pool({
   database: process.env.DB_NAME,
 });
 
+pool.on('connect', (client) => {
+  if (process.env.COLONY_SCHEMA) {
+    client.query(`SET search_path TO ${process.env.COLONY_SCHEMA}, public`);
+  }
+});
+
 export async function query(text: string, params?: any[]) {
   return pool.query(text, params);
 }

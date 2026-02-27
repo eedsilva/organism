@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { OpportunityModal } from "./OpportunityModal";
 
 interface OpportunityBoardProps {
@@ -9,7 +10,21 @@ interface OpportunityBoardProps {
 
 export function OpportunityBoard({ opportunities }: OpportunityBoardProps) {
     const [selectedOpportunity, setSelectedOpportunity] = useState<any | null>(null);
+    const router = useRouter();
     const stages = ["new", "reviewing", "validating", "building", "alive", "dead"];
+
+    useEffect(() => {
+        const port = process.env.NEXT_PUBLIC_WEBHOOK_PORT || 3001;
+        // In local dev, hardcode localhost. In prod, this would be the API URL.
+        const source = new EventSource(`http://localhost:${port}/events/stream`);
+
+        source.onmessage = (event) => {
+            console.log("Organism Event Received:", event.data);
+            router.refresh();
+        };
+
+        return () => source.close();
+    }, [router]);
 
     return (
         <div>

@@ -22,7 +22,12 @@ async function heartbeat() {
   running = false;
 }
 
+import { startLlmWorkerPool } from "./workers/llm";
+import { startValidationWorkerPool } from "./workers/validation";
+
 console.log("Organism starting...");
+startLlmWorkerPool();
+startValidationWorkerPool();
 
 setInterval(heartbeat, interval);
 

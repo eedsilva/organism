@@ -18,7 +18,7 @@ const PROMPT = "\n🧬 you> ";
 
 async function buildContext(): Promise<string> {
     const [pipeline, revenue, recentReflection, policies, recentEvents] = await Promise.all([
-        query(`SELECT status, COUNT(*) as count FROM opportunities GROUP BY status ORDER BY count DESC`),
+        query(`SELECT status, COUNT(*) as count FROM opportunity_current_state GROUP BY status ORDER BY count DESC`),
         query(`SELECT COALESCE(SUM(signups),0) as signups FROM metrics_daily`),
         query(`SELECT result->>'summary' as summary, result->>'revenue_assessment' as assessment, created_at
            FROM reflection_log ORDER BY created_at DESC LIMIT 1`),
@@ -56,7 +56,7 @@ async function cmdStatus() {
         `SELECT COALESCE(SUM(inference_cost_usd),0) as burn FROM cycles WHERE DATE(started_at) = CURRENT_DATE`
     );
     const pipeline = await query(
-        `SELECT status, COUNT(*) as count FROM opportunities GROUP BY status ORDER BY count DESC`
+        `SELECT status, COUNT(*) as count FROM opportunity_current_state GROUP BY status ORDER BY count DESC`
     );
 
     const signups = Number(revenue.rows[0]?.total_signups ?? 0);
@@ -79,7 +79,7 @@ async function cmdStatus() {
 async function cmdTop() {
     const rows = await query(
         `SELECT title, source, viability_score, pain_score, wtp_score, status
-     FROM opportunities
+     FROM opportunity_current_state
      WHERE status IN ('new','reviewing')
      ORDER BY viability_score DESC LIMIT 5`
     );
@@ -102,7 +102,7 @@ async function cmdTop() {
 async function cmdPipeline() {
     const rows = await query(
         `SELECT id, title, source, status, viability_score, created_at
-     FROM opportunities
+     FROM opportunity_current_state
      ORDER BY created_at DESC LIMIT 20`
     );
 
@@ -209,12 +209,12 @@ async function cmdReflect() {
 async function cmdSense() {
     console.log(`\n  👁️  Running all sensors now...`);
     const { senseHackerNews } = await import("../sense/hn");
-    const { senseGithub } = await import("../sense/github");
     const { senseReddit } = await import("../sense/reddit");
+    const { senseG2 } = await import("../sense/g2");
 
     await Promise.all([
         senseHackerNews().then(() => console.log("  ✅ HN done")),
-        senseGithub().then(() => console.log("  ✅ GitHub done")),
+        senseG2().then(() => console.log("  ✅ G2 done")),
         senseReddit().catch((e: any) => console.log(`  ⚠️  Reddit: ${e.message}`)),
     ]);
     console.log(`  ✅ Sensing complete.`);

@@ -1,5 +1,6 @@
 import { callBrain, TaskType } from "../cognition/llm";
 import { query } from "../state/db";
+import { transitionOpportunity } from "./opportunity";
 
 /**
  * plan.ts — LLM evaluates opportunities and scores them.
@@ -54,75 +55,28 @@ The score must be an integer between 0 and 100. Do not omit it.
 `;
 
   try {
-    // Use cloud for high-viability scoring (worth the spend); local for routine ones
     const useCloud = (opportunity.viability_score ?? 0) >= 60;
-    const taskType: TaskType = useCloud ? "planning" : "scoring";
-    const response = await callBrain(
+
+    // Instead of waiting, queue it for the workers
+    const jobInput = {
       prompt,
-      `planning for opportunity: ${opportunity.title?.slice(0, 60)}`,
-      !useCloud,
-      taskType
+      opportunity_id: opportunity.id,
+      title: opportunity.title,
+      use_cloud: useCloud
+    };
+
+    const res = await query(
+      `INSERT INTO llm_jobs (job_type, input) VALUES ($1, $2) RETURNING id`,
+      ["plan", JSON.stringify(jobInput)]
     );
 
-    let parsed: any = null;
-    let score = 0;
-    let parseMethod = "json";
+    const jobId = res.rows[0].id;
+    console.log(`  🕒 Plan job #${jobId} queued for async processing (opportunity: ${opportunity.id})`);
 
-    try {
-      const clean = response.replace(/```json|```/g, "").trim();
-      parsed = JSON.parse(clean);
-      score = Math.min(100, Math.max(0, parseInt(parsed.score) || 0));
-    } catch {
-      // JSON parse failed — log it visibly, try score extraction
-      parseMethod = "fallback";
-      score = extractScore(response);
+    // Transition the opportunity to 'planning' state to lock it while LLM thinks
+    await transitionOpportunity(opportunity.id, 'queued_for_planning');
 
-      await query(
-        `INSERT INTO events (type, payload) VALUES ($1, $2)`,
-        ["plan_parse_fail", {
-          opportunity_id: opportunity.id,
-          extracted_score: score,
-          raw_preview: response.slice(0, 300),
-        }]
-      );
-
-      console.log(`  ⚠️  Plan JSON parse failed for "${opportunity.title?.slice(0, 40)}" — extracted score: ${score}`);
-    }
-
-    // Store plan + parse method for debugging
-    await query(
-      `UPDATE opportunities SET plan = $1 WHERE id = $2`,
-      [response.slice(0, 4000), opportunity.id]
-    );
-
-    await query(
-      `INSERT INTO events (type, payload) VALUES ($1, $2)`,
-      ["plan_generated", {
-        opportunity_id: opportunity.id,
-        score,
-        parse_method: parseMethod,
-        parsed: parsed ?? null,
-      }]
-    );
-
-    // Decision
-    if (score >= PURSUE_THRESHOLD) {
-      await query(`UPDATE opportunities SET status = 'pursue' WHERE id = $1`, [opportunity.id]);
-      await query(
-        `INSERT INTO events (type, payload) VALUES ($1, $2)`,
-        ["decision", { opportunity_id: opportunity.id, action: "pursue", score }]
-      );
-      console.log(`  ✅ PURSUE (score: ${score}) — ${opportunity.title?.slice(0, 50)}`);
-    } else {
-      await query(`UPDATE opportunities SET status = 'discarded' WHERE id = $1`, [opportunity.id]);
-      await query(
-        `INSERT INTO events (type, payload) VALUES ($1, $2)`,
-        ["decision", { opportunity_id: opportunity.id, action: "discard", score }]
-      );
-      console.log(`  ❌ Discard (score: ${score}) — ${opportunity.title?.slice(0, 50)}`);
-    }
-
-    return { score, parsed };
+    return { queued: true, jobId };
 
   } catch (err: any) {
     await query(
@@ -130,9 +84,9 @@ The score must be an integer between 0 and 100. Do not omit it.
       ["brain_error", { error: err.message, opportunity_id: opportunity.id }]
     );
 
-    await query(`UPDATE opportunities SET status = 'error' WHERE id = $1`, [opportunity.id]);
+    await transitionOpportunity(opportunity.id, 'error', { error: err.message });
 
-    console.log(`  ❌ Brain error: ${err.message}`);
+    console.log(`  ❌ Error queuing plan job: ${err.message}`);
     return null;
   }
 }

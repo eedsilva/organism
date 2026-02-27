@@ -50,7 +50,7 @@ async function gatherPerfContext(): Promise<Record<string, any>> {
         query(`SELECT status, COUNT(*) as count FROM cycles WHERE started_at >= NOW() - INTERVAL '7 days' GROUP BY status`),
         query(`SELECT COUNT(*) as count FROM events WHERE type = 'brain_error' AND created_at >= NOW() - INTERVAL '7 days'`),
         query(`SELECT status, COUNT(*) as count, ROUND(AVG(viability_score)) as avg_viability
-           FROM opportunities GROUP BY status ORDER BY count DESC`),
+           FROM opportunity_current_state GROUP BY status ORDER BY count DESC`),
         query(`SELECT channel, status, COUNT(*) as count FROM reach_log GROUP BY channel, status`),
         query(`SELECT result->>'summary' as summary, result->>'top_concern' as concern,
                   result->>'strategic_notes' as focus, created_at

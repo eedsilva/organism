@@ -1,4 +1,5 @@
 import { query } from "../state/db";
+import { transitionOpportunity } from "./opportunity";
 
 /**
  * decide.ts — Selects the top opportunity by weighted viability score.
@@ -50,7 +51,7 @@ export async function selectTopOpportunity() {
     const candidates = await query(
         `SELECT id, title, source, pain_score, wtp_score,
             viability_score, competition_score
-     FROM opportunities
+     FROM opportunity_current_state
      WHERE status = 'new'
        AND viability_score >= $1
      ORDER BY viability_score DESC
@@ -71,10 +72,7 @@ export async function selectTopOpportunity() {
 
     const top = ranked.find(opportunity => opportunity.weighted_viability >= 50) || ranked[0];
 
-    await query(
-        `UPDATE opportunities SET status = 'reviewing' WHERE id = $1`,
-        [top.id]
-    );
+    await transitionOpportunity(top.id, 'reviewing');
 
     await query(
         `INSERT INTO events (type, payload) VALUES ($1, $2)`,
