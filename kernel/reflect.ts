@@ -64,7 +64,7 @@ async function gatherContext(): Promise<Record<string, any>> {
     `SELECT created_at FROM reflection_log ORDER BY created_at DESC LIMIT 1`
   );
   const since = lastReflection.rows[0]?.created_at
-    ? `'${lastReflection.rows[0].created_at}'`
+    ? `'${new Date(lastReflection.rows[0].created_at).toISOString()}'`
     : `NOW() - INTERVAL '24 hours'`;
 
   const outcomes = await query(

@@ -82,6 +82,9 @@ function parseRSS(xml: string) {
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function senseUpwork() {
+    console.warn("  ⚠️  Upwork RSS feeds were deprecated in Aug 2024. Skipping Upwork sensing.");
+    return;
+
     let inserted = 0;
     let errors = 0;
     const highValueFound: string[] = [];
@@ -114,7 +117,7 @@ export async function senseUpwork() {
                 const existing = await query(`SELECT id FROM opportunity_current_state WHERE evidence_url = $1`, [job.link]);
                 if (existing.rows.length > 0) continue;
 
-                const budgetDisplay = job.budgetMatch ? `$${job.budgetMatch[1]}` : "Hourly/Unknown";
+                const budgetDisplay = job.budgetMatch?.[1] ? `$${job.budgetMatch![1]}` : "Hourly/Unknown";
                 const title = `Freelance Task: ${job.title}`;
                 const rawText = `Budget: ${budgetDisplay}\\n\\n${job.description}`;
 

@@ -5,7 +5,7 @@ import { getBudgetStatus } from "./budgets";
 import { senseHackerNews } from "../sense/hn";
 import { senseReddit } from "../sense/reddit";
 import { senseAppReviews } from "../sense/reviews";
-import { senseUpwork } from "../sense/upwork";
+import { senseTwitter } from "../sense/twitter";
 import { senseG2 } from "../sense/g2";
 import { selectTopOpportunity } from "./decide";
 import { generatePlan } from "./plan";
@@ -66,8 +66,8 @@ export async function runCycle() {
     await Promise.all([
       senseHackerNews().then(() => console.log("  ✅ HN")),
       senseAppReviews().then(() => console.log("  ✅ B2B Reviews")),
-      senseUpwork().then(() => console.log("  ✅ Upwork Jobs")),
       senseG2().then(() => console.log("  ✅ G2/Capterra Negative Reviews")),
+      senseTwitter().then(() => console.log("  ✅ Twitter Signals")),
       senseReddit().catch((err: any) => console.log(`  ⚠️  Reddit: ${err.message}`)),
     ]);
     await query(`SELECT pg_notify('organism_events', $1)`, [JSON.stringify({ type: "sense_completed" })]);
