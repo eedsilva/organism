@@ -3,6 +3,8 @@ import {
     approveCloudRequest,
     rejectCloudRequest,
     getCloudSpendSummary,
+    getTodayCloudSpend,
+    getCloudBudget,
 } from "../cognition/llm";
 import * as fs from "fs";
 
@@ -16,20 +18,18 @@ import * as fs from "fs";
 // ── /status ───────────────────────────────────────────────────────────────────
 
 export async function getStatus(): Promise<string> {
-    const [leads, budget, todayBurn, pipeline, todayErrors] = await Promise.all([
+    const [leads, pipeline, todayErrors, burn, limit] = await Promise.all([
         query(`SELECT COALESCE(SUM(signups),0) as total_signups FROM metrics_daily`),
-        query(`SELECT value FROM policies WHERE key = 'daily_budget_usd'`),
-        query(`SELECT COALESCE(SUM(inference_cost_usd),0) as burn FROM cycles WHERE DATE(started_at) = CURRENT_DATE`),
         query(`SELECT status, COUNT(*) as count FROM opportunity_current_state GROUP BY status ORDER BY count DESC`),
         query(`SELECT type, COUNT(*) as n FROM events
            WHERE DATE(created_at) = CURRENT_DATE
              AND (type LIKE '%error%' OR type LIKE '%fail%' OR type LIKE '%blocked%')
            GROUP BY type ORDER BY n DESC LIMIT 5`),
+        getTodayCloudSpend(),
+        getCloudBudget(),
     ]);
 
     const signups = Number(leads.rows[0]?.total_signups ?? 0);
-    const burn = Number(todayBurn.rows[0]?.burn ?? 0);
-    const limit = Number(budget.rows[0]?.value ?? 5);
 
     const pipelineLines = pipeline.rows
         .map((r: any) => `  ${r.status.padEnd(12)} ${r.count}`)

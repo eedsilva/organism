@@ -1,16 +1,18 @@
 import React from "react";
 import { Activity } from "lucide-react";
-import { getSystemMetrics, getPipelineOpportunities, getRecentEvents } from "./actions";
+import { getSystemMetrics, getPipelineOpportunities, getRecentEvents, getOSIMetrics } from "./actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OpportunityBoard } from "@/components/OpportunityBoard";
+import { OSIPanel } from "@/components/OSIPanel";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  const [metrics, opportunities, events] = await Promise.all([
+  const [metrics, opportunities, events, osiMetrics] = await Promise.all([
     getSystemMetrics(),
     getPipelineOpportunities(),
     getRecentEvents(),
+    getOSIMetrics(),
   ]);
 
   return (
@@ -20,6 +22,9 @@ export default async function Dashboard() {
       </header>
 
       <div className="p-8 space-y-8 max-w-7xl">
+
+        {/* OSI Panel - Primary V4 metric */}
+        <OSIPanel metrics={osiMetrics} />
 
         {/* Top Metrics Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

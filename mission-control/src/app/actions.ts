@@ -12,8 +12,11 @@ export async function getPipelineOpportunities() {
 }
 
 export async function getSystemMetrics() {
-  const revenue = await query(`SELECT COALESCE(SUM(revenue_usd), 0) as total FROM metrics_daily`);
-  const burn = await query(`SELECT COALESCE(SUM(inference_cost_usd), 0) as total FROM cycles WHERE DATE(started_at) = CURRENT_DATE`);
+  const [revenue, burn] = await Promise.all([
+    query(`SELECT COALESCE(SUM(revenue_usd), 0) as total FROM metrics_daily`),
+    query(`SELECT COALESCE(SUM((payload->>'cost_usd')::numeric), 0) as total
+           FROM events WHERE type = 'cloud_llm_call' AND DATE(created_at) = CURRENT_DATE`),
+  ]);
 
   return {
     revenue: parseFloat(revenue.rows[0]?.total || '0'),
@@ -46,6 +49,49 @@ export async function updatePolicy(key: string, value: string) {
     [JSON.stringify(value), key]
   );
   return { success: true };
+}
+
+export async function getOSIMetrics() {
+  const [revenue, llmCost, toolCosts, operatorHoursPolicy] = await Promise.all([
+    query(`SELECT COALESCE(SUM(revenue_usd), 0) as total FROM metrics_daily WHERE date >= CURRENT_DATE - INTERVAL '30 days'`),
+    query(`SELECT COALESCE(SUM((payload->>'cost_usd')::numeric), 0) as total FROM events WHERE type = 'cloud_llm_call' AND created_at >= NOW() - INTERVAL '30 days'`),
+    query(`SELECT COALESCE(SUM(0), 0) as total`), // Tool subscriptions — placeholder
+    query(`SELECT value FROM policies WHERE key = 'operator_hours_30d'`),
+  ]);
+  const revenueVal = parseFloat(revenue.rows[0]?.total || '0');
+  const llmCostVal = parseFloat(llmCost.rows[0]?.total || '0');
+  const toolCostsVal = 0;
+  const operatorHours = parseFloat(operatorHoursPolicy.rows[0]?.value || '0') || 0;
+  const rawOSI = revenueVal - llmCostVal - toolCostsVal;
+  const effectiveOSIPerHour = operatorHours > 0 ? rawOSI / operatorHours : rawOSI;
+  const status = rawOSI > 0 ? 'profitable' : rawOSI > -50 ? 'surviving' : 'dying';
+  return {
+    revenue: revenueVal,
+    llmCost: llmCostVal,
+    toolCosts: toolCostsVal,
+    rawOSI,
+    operatorHours,
+    effectiveOSIPerHour,
+    status,
+  };
+}
+
+export async function getDisplacementEvents() {
+  const result = await query(`
+    SELECT id, type, product_or_role, displacement_strength, viability_score, status, detected_at
+    FROM displacement_events
+    ORDER BY detected_at DESC LIMIT 10
+  `);
+  return result.rows;
+}
+
+export async function getNichePerformance() {
+  try {
+    const result = await query(`SELECT niche, communities_mapped, total_leads, activated_users, avg_effectiveness FROM niche_performance`);
+    return result.rows;
+  } catch {
+    return [];
+  }
 }
 
 export async function getPlausibleStats(domain: string) {

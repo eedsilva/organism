@@ -105,7 +105,7 @@ export async function senseAppReviews() {
                  wtp_score        = GREATEST(opportunities.wtp_score, $5),
                  seen_count       = COALESCE(opportunities.seen_count, 1) + 1
            RETURNING id, (xmax = 0) AS is_new`,
-          [`review/${app.platform}-agent`, `[${app.name}] App Review Complaint`.slice(0, 500), `${app.url}#agent-${Date.now()}-${Math.floor(Math.random() * 1000)}`, painScore, wtpScore, compScore, text.slice(0, 3000)]
+          [`review/${app.platform}-agent`, `[${app.name}] App Review Complaint`.slice(0, 500), `${app.url}#agent-${Date.now()}-${Math.floor(Math.random() * 1000)}`, Math.round(painScore), Math.round(wtpScore), Math.round(compScore), text.slice(0, 3000)]
         );
 
         const isNew = result.rows[0]?.is_new;

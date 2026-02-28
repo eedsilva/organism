@@ -261,6 +261,13 @@ export async function runReflect() {
 
   try {
     const ctx = await gatherContext();
+    const { evaluateThesis } = await import("./thesis");
+    await evaluateThesis();
+    try {
+      await query(`REFRESH MATERIALIZED VIEW niche_performance`);
+    } catch {
+      // View may not exist yet if migrations not run
+    }
     const result = await runReflection(ctx);
 
     if (!result) {

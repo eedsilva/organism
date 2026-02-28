@@ -1,6 +1,6 @@
 import * as readline from "readline";
 import { query } from "../state/db";
-import { callBrain, approveCloudRequest, rejectCloudRequest, getCloudSpendSummary } from "../cognition/llm";
+import { callBrain, approveCloudRequest, rejectCloudRequest, getCloudSpendSummary, getTodayCloudSpend, getCloudBudget } from "../cognition/llm";
 
 
 /**
@@ -46,22 +46,14 @@ async function buildContext(): Promise<string> {
 // ── Slash command handlers ────────────────────────────────────────────────────
 
 async function cmdStatus() {
-    const revenue = await query(
-        `SELECT COALESCE(SUM(signups),0) as total_signups FROM metrics_daily`
-    );
-    const budget = await query(
-        `SELECT value FROM policies WHERE key = 'daily_budget_usd'`
-    );
-    const todayBurn = await query(
-        `SELECT COALESCE(SUM(inference_cost_usd),0) as burn FROM cycles WHERE DATE(started_at) = CURRENT_DATE`
-    );
-    const pipeline = await query(
-        `SELECT status, COUNT(*) as count FROM opportunity_current_state GROUP BY status ORDER BY count DESC`
-    );
+    const [revenue, pipeline, burn, limit] = await Promise.all([
+        query(`SELECT COALESCE(SUM(signups),0) as total_signups FROM metrics_daily`),
+        query(`SELECT status, COUNT(*) as count FROM opportunity_current_state GROUP BY status ORDER BY count DESC`),
+        getTodayCloudSpend(),
+        getCloudBudget(),
+    ]);
 
     const signups = Number(revenue.rows[0]?.total_signups ?? 0);
-    const burn = Number(todayBurn.rows[0]?.burn ?? 0);
-    const limit = Number(budget.rows[0]?.value ?? 5);
 
     console.log(`\n══════════════════════════════════════`);
     console.log(`  ORGANISM STATUS`);

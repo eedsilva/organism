@@ -3,6 +3,7 @@ import { query } from "../state/db";
 import { draftOutreach } from "./reach";
 import { sendPushNotification } from "./notify";
 import { transitionOpportunity } from "./opportunity";
+import { selectArchetype } from "../cognition/archetypeSelector";
 import * as fs from "fs";
 import * as path from "path";
 import { exec } from "child_process";
@@ -404,6 +405,84 @@ UPDATE opportunities SET status = 'shipped' WHERE id = ${opportunity.id};
     await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
       ["build_error", { error: err.message, opportunity_id: opportunity.id }]
     );
+    return null;
+  }
+}
+
+// ── V4: Launch free tool from displacement event ─────────────────────────────
+
+export async function launchFreeToolFromDisplacement(displacementEvent: {
+  id: string;
+  type: string;
+  product_or_role: string;
+  affected_persona_niche?: string;
+  displacement_strength: number;
+}): Promise<{ deploymentId: number; folderPath: string } | null> {
+  const archetype = selectArchetype(
+    displacementEvent.type as any,
+    displacementEvent.displacement_strength,
+    displacementEvent.affected_persona_niche
+  );
+
+  const prompt = `
+You are configuring a free B2B tool template for a displacement event.
+Product: ${displacementEvent.product_or_role}
+Archetype: ${archetype}
+
+Provide valid JSON only:
+{
+  "tool_name": "short name (e.g. Zapier Price Calculator)",
+  "headline": "Value prop (max 10 words)",
+  "input_description": "What the user pastes or enters",
+  "share_hook": "Why they'd share this (e.g. 'Send to your finance team')",
+  "data_dependency_level": "none"
+}
+`;
+
+  try {
+    const response = await callBrain(prompt, `tool spec for ${displacementEvent.product_or_role}`, false, "chat");
+    const clean = response.replace(/```json|```/g, "").trim();
+    const toolSpec = JSON.parse(clean);
+
+    const insert = await query(
+      `INSERT INTO tool_deployments (displacement_event_id, archetype, tool_name, tool_spec, data_dependency_level, status)
+       VALUES ($1, $2, $3, $4, $5, 'building') RETURNING id`,
+      [
+        displacementEvent.id,
+        archetype,
+        toolSpec.tool_name || displacementEvent.product_or_role + " Tool",
+        JSON.stringify(toolSpec),
+        toolSpec.data_dependency_level || "none",
+      ]
+    );
+    const deploymentId = insert.rows[0].id;
+
+    const folderName = `tool_${displacementEvent.id.replace(/[^a-z0-9]/gi, "_")}`;
+    const folderPath = path.join("products", folderName);
+    if (!fs.existsSync("products")) fs.mkdirSync("products");
+
+    const chassisSrc = path.join(process.cwd(), "organism-ui-chassis");
+    await execAsync(`cp -R "${chassisSrc}" "${folderPath}"`);
+
+    const config = {
+      product_name: toolSpec.tool_name?.toLowerCase().replace(/\s/g, "") || "tool",
+      headline: toolSpec.headline || `Free ${displacementEvent.product_or_role} tool`,
+      subheadline: "Get instant value. No signup required.",
+      archetype,
+      share_hook: toolSpec.share_hook,
+      lead_webhook_url: `http://localhost:3001/signal/lead/0`,
+      opportunity_id: 0,
+    };
+    fs.writeFileSync(path.join(folderPath, "chassis.config.json"), JSON.stringify(config, null, 2));
+
+    await query(
+      `UPDATE tool_deployments SET status = 'ready' WHERE id = $1`,
+      [deploymentId]
+    );
+
+    return { deploymentId, folderPath };
+  } catch (err: any) {
+    console.error(`  ❌ launchFreeToolFromDisplacement: ${err.message}`);
     return null;
   }
 }

@@ -144,7 +144,7 @@ export async function senseTwitter(customQueries?: string[]) {
                  wtp_score        = GREATEST(opportunities.wtp_score, $5),
                  seen_count       = COALESCE(opportunities.seen_count, 1) + 1
            RETURNING id, (xmax = 0) AS is_new`,
-                    ["twitter-agent", text.slice(0, 500), evidenceUrl, painScore, wtpScore, compScore, text.slice(0, 3000)]
+                    ["twitter-agent", text.slice(0, 500), evidenceUrl, Math.round(painScore), Math.round(wtpScore), Math.round(compScore), text.slice(0, 3000)]
                 );
 
                 const isNew = result.rows[0]?.is_new;

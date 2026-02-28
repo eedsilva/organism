@@ -85,7 +85,7 @@ export async function senseHackerNews() {
              SET pain_score = GREATEST(opportunities.pain_score, $4),
                  seen_count = COALESCE(opportunities.seen_count, 1) + 1
            RETURNING id, (xmax = 0) AS is_new`,
-          ["hackernews-agent", text.slice(0, 100), url, painScore, text.slice(0, 2000)]
+          ["hackernews-agent", text.slice(0, 100), url, Math.round(painScore), text.slice(0, 2000)]
         );
 
         const isNew = result.rows[0]?.is_new;

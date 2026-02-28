@@ -15,6 +15,7 @@ import { runDigest } from "./digest";
 import { runReflect } from "./reflect";
 import { runEvolve } from "./evolve";
 import { runDeepResearch } from "../sense/research";
+import { runPriceShockCheck } from "../sense/displacement/priceShock";
 
 const SENSOR_TIMEOUT_MS = 90_000; // 90 seconds max per sensor — no sensor can hold the cycle hostage
 
@@ -74,6 +75,12 @@ export async function runCycle() {
     const processedCount = await processSignalQueue();
     if (processedCount > 0) {
       console.log(`  📬 Processed ${processedCount} signal(s) from queue`);
+    }
+
+    // 1b. Price shock check — weekly, runs DOM diff on monitored pricing pages
+    const priceShockChanges = await runWithTimeout(runPriceShockCheck, "PriceShock", 120_000);
+    if (priceShockChanges !== null && priceShockChanges > 0) {
+      console.log(`  ⚡ Price shock: ${priceShockChanges} change(s) detected`);
     }
 
     // 2. Budget check (uses events table via llm.ts, not cycles.inference_cost_usd)

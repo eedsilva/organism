@@ -56,9 +56,9 @@ export async function processSignalQueue(): Promise<number> {
           signal.source,
           (payload.title || "").toString().slice(0, 200),
           payload.evidence_url,
-          payload.pain_score ?? 0,
-          payload.wtp_score ?? 0,
-          payload.competition_score ?? 10,
+          Math.round(Math.min(100, Math.max(0, Number(payload.pain_score) || 0))),
+          Math.round(Math.min(100, Math.max(0, Number(payload.wtp_score) || 0))),
+          Math.round(Math.min(100, Math.max(0, Number(payload.competition_score) || 10))),
           (payload.raw_text || "").toString().slice(0, 3000),
         ]
       );

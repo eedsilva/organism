@@ -1,6 +1,7 @@
--- Migration 013: Fix opportunity_current_state view to include all opportunity columns
+-- Migration 016: Fix opportunity_current_state view to include all opportunity columns
 -- The view was missing seen_count and operator_rating added in 009, causing getIdeas() to fail
 -- Must DROP and CREATE because adding columns in the middle changes column positions
+-- Renumbered from 013 to avoid duplicate migration numbers with 013_telegram.sql
 
 DROP VIEW IF EXISTS opportunity_current_state;
 

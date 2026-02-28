@@ -146,7 +146,7 @@ export async function senseReddit(customQueries?: string[]) {
                        wtp_score        = GREATEST(opportunities.wtp_score, $5),
                        seen_count       = COALESCE(opportunities.seen_count, 1) + 1
                  RETURNING id, (xmax = 0) AS is_new`,
-            [`reddit-agent/r/${subreddit}`, text.slice(0, 200), evidenceUrl, painScore, wtpScore, compScore, text.slice(0, 3000)]
+            [`reddit-agent/r/${subreddit}`, text.slice(0, 200), evidenceUrl, Math.round(painScore), Math.round(wtpScore), Math.round(compScore), text.slice(0, 3000)]
           );
 
           const isNew = result.rows[0]?.is_new;
