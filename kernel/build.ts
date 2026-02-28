@@ -4,6 +4,7 @@ import { draftOutreach } from "./reach";
 import { sendPushNotification } from "./notify";
 import { transitionOpportunity } from "./opportunity";
 import { selectArchetype } from "../cognition/archetypeSelector";
+import * as templates from "./toolArchetypes";
 import * as fs from "fs";
 import * as path from "path";
 import { exec } from "child_process";
@@ -464,11 +465,19 @@ Provide valid JSON only:
     const chassisSrc = path.join(process.cwd(), "organism-ui-chassis");
     await execAsync(`cp -R "${chassisSrc}" "${folderPath}"`);
 
+    const templateKey = `${archetype}_TEMPLATE` as keyof typeof templates;
+    const archetypeTemplate = templates[templateKey] || {};
+
     const config = {
       product_name: toolSpec.tool_name?.toLowerCase().replace(/\s/g, "") || "tool",
       headline: toolSpec.headline || `Free ${displacementEvent.product_or_role} tool`,
       subheadline: "Get instant value. No signup required.",
-      archetype,
+      pain_points: [
+        "Current pricing is becoming unsustainable",
+        "Need a reliable alternative quickly",
+        "Manual workarounds take too much time"
+      ],
+      ...archetypeTemplate,
       share_hook: toolSpec.share_hook,
       lead_webhook_url: `http://localhost:3001/signal/lead/0`,
       opportunity_id: 0,

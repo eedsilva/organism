@@ -15,8 +15,8 @@ export async function sendPushNotification(subject: string, message: string, htm
 
     try {
         await resend.emails.send({
-            from: 'Organism <hello@organism.dev>', // You must verify this domain or use resend's onboarding email.
-            to: [operatorEmail],
+            from: operatorEmail, // You must verify this domain or use resend's onboarding email.
+            to: ["eed.jrr@gmail.com"],
             subject: `🧬 Organism: ${subject}`,
             html: `
                 <div style="font-family: sans-serif; color: #171717; max-width: 600px; padding: 20px; border: 1px solid #e5e5e5; border-radius: 8px;">

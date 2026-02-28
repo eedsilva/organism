@@ -105,6 +105,10 @@ function evaluateKillSignal(
   if (signal.includes("zero_revenue") && daysElapsed > 75) {
     return perf.revenue === 0;
   }
+  if (signal.includes("negative_osi") && daysElapsed >= 90) {
+    // Basic OSI proxy here: if revenue is 0 or less than a minimal threshold by day 90.
+    return perf.revenue < 50; // Approximating API cost burn
+  }
   return false;
 }
 

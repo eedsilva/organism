@@ -3,7 +3,9 @@
 import { motion } from "framer-motion";
 import { AlertCircle } from "lucide-react";
 
-export function PainPoints({ points }: { points: string[] }) {
+export function PainPoints({ points = [] }: { points?: string[] }) {
+    if (!points || points.length === 0) return null;
+
     return (
         <div className="mt-16 sm:mt-24 max-w-lg mx-auto">
             <h2 className="text-center tracking-wide uppercase text-[var(--primary)] text-sm font-bold mb-8">
