@@ -92,7 +92,7 @@ function scoreCompetition(tweet: Tweet): number {
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
-export async function senseTwitter() {
+export async function senseTwitter(customQueries?: string[]) {
     const agent = new BrowserAgent("twitter");
 
     let inserted = 0;
@@ -101,7 +101,9 @@ export async function senseTwitter() {
 
     console.log("  🐦 Starting Agentic Twitter Sensing...");
 
-    for (const queryStr of TWITTER_QUERIES) {
+    const activeQueries = customQueries && customQueries.length > 0 ? customQueries : TWITTER_QUERIES;
+
+    for (const queryStr of activeQueries) {
         try {
             const encodedQuery = encodeURIComponent(`${queryStr} lang:en`);
             const url = `https://x.com/search?q=${encodedQuery}&src=typed_query&f=live`;
@@ -163,7 +165,7 @@ export async function senseTwitter() {
     await agent.close();
 
     await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
-        ["twitter_sense_agent", { queries: TWITTER_QUERIES.length, inserted, errors }]
+        ["twitter_sense_agent", { queries: activeQueries.length, inserted, errors }]
     );
 
     if (highValueFound.length > 0) {

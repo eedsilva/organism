@@ -1,15 +1,15 @@
-# Organism V2 — The Silent Craftsman
+# Organism V3 — The Silent Hunter
 
 ## Overview
 
-**Organism** is a self-evolving autonomous system designed to detect high-intent economic pain, validate demand through targeted engagement, build incredibly beautiful minimal products, and generate a validated audience with minimal human intervention.
+**Organism** is a self-evolving autonomous system that detects high-intent B2B economic pain, validates demand through targeted agentic sensing, builds conversion-optimized minimal products, and generates revenue with minimal human intervention.
 
 Its core survival rule:
 
-> If it solves a real problem and captures high-intent leads (email/waitlist conversions from targeted traffic), it lives.
-> If it fails to convert targeted traffic, it must kill the idea, adapt, and learn.
+> If it solves a real problem and captures high-intent leads, it lives.
+> If it fails to convert, it kills the idea, adapts, and learns.
 
-The system runs completely autonomously in the background. It is monitored through **Mission Control**, a beautiful dashboard that replaces manual chat notifications, allowing the operator to review its progress silently.
+The system runs completely autonomously. It is monitored through **Mission Control**, a real-time dashboard that replaces manual intervention.
 
 ---
 
@@ -20,15 +20,15 @@ The system runs completely autonomously in the background. It is monitored throu
 The organism operates in repeating cycles:
 
 1. Self-check & Environment Boot
-2. Budget & Configuration evaluation via **Mission Control**
-3. Environmental sensing (High-Intent B2B & Freelance sources)
-4. Opportunity scoring & Targeted Traffic Quality Checks
-5. Planning & Design Generation (using LLM as a Designer)
-6. Decision (pursue / discard)
-7. Build & Automate Deployment (Vercel/Render)
-8. Direct Outreach (Cold Emails to Job Posters / Targeted SEO)
-9. Metrics logging (Tracking analytics & conversion rates)
-10. Reflection (periodic)
+2. Budget & Configuration evaluation
+3. **Deep Research** (Google Trends → ChatGPT persona synthesis → dynamic queries)
+4. Environmental Sensing (6 agentic sources with dynamic queries)
+5. Opportunity scoring & selection
+6. Planning & Design Generation (LLM as Designer)
+7. Decision (pursue / discard)
+8. Build & Deploy (Vercel/Render)
+9. Direct Outreach (Cold Emails / SEO)
+10. Metrics logging & Reflection (periodic)
 
 All state is persisted in PostgreSQL.
 
@@ -36,17 +36,16 @@ All state is persisted in PostgreSQL.
 
 ## 2. Infrastructure
 
-* **PostgreSQL (Docker)** — persistent memory
-* **Redis (Docker)** — optional caching
+* **PostgreSQL (Docker)** — persistent memory, budget tracking, event-sourcing
 * **Node.js + TypeScript** — execution engine
-* **Local LLM (Ollama)** — initial processing
-* **Cloud LLM (Gemini API / GPT-4o)** — advanced reasoning and **Design Generation**
-* **Next.js + Tailwind (organism-ui-chassis)** — premium, conversion-optimized frontend template
+* **Playwright + Stealth Plugin** — Agentic Browser (multi-modal vision)
+* **Local LLM (Ollama)** — `gemma3:12b`, `llama3.2-vision` — default processing
+* **Cloud LLM (OpenAI GPT-4o-mini)** — vision reasoning, within daily budget
+* **ChatGPT Web UI** — Deep Research query synthesis via authenticated session
+* **Google Trends** — Rising topic detection via direct Playwright scraping
+* **Next.js + Tailwind (organism-ui-chassis)** — product frontend template
 * **Vercel / Render API** — automatic remote deployment
-* **Google Analytics / Plausible / PostHog** — targeted traffic and conversion tracking
-* **Resend / SendGrid** — push notifications and direct cold outreach
-
-The organism core runs entirely on the host machine, while the built products are deployed globally.
+* **Resend / SendGrid** — push notifications and cold outreach
 
 ---
 
@@ -62,32 +61,82 @@ The organism core runs entirely on the host machine, while the built products ar
 
 ## Mission Control (The Executive Dashboard)
 
-Replaces all previous direct chat/terminal interventions.
-
-* **Pipeline View**: Kanban board tracking ideas from Sensing -> Validating -> Building -> Alive/Dead.
-* **Metrics View**: Analytics tracking targeted traffic sources and email conversions.
+* **Pipeline View**: Kanban board tracking ideas from Sensing → Validating → Building → Alive/Dead.
+* **Metrics View**: Analytics tracking traffic sources and email conversions.
 * **Engine Room**: Visual controls for LLM budgets, sensor thresholds, and kill conditions.
-* **Push Notifications**: Concise, non-interruptive async alerts (via Email/Read-only Telegram) for major events, preserving autonomy.
+* **Push Notifications**: Async daily digest (Telegram/Email) for major events.
 
 ---
 
-## Environmental Sensing V2 (The New Diet)
+## Deep Research Engine (`sense/research.ts`)
 
-Organism no longer feeds on generalized complaints; it seeks validated willingness-to-pay.
+The most important sensing upgrade. Runs at the start of every cycle before any raw data collection.
 
-### Freelance Job Sensor (Upwork, etc.)
-Targets: Business owners explicitly paying freelancers to perform manual tasks.
-Flow:
-* Scrape repetitive data-entry / manual tasks.
-* Extract poster contact info.
-* Build a micro-SaaS specifically for that task.
-* Send an automated direct cold email offering the solution.
+**Phase 1 — Google Trends (`sense/trends.ts`)**
+* Playwright navigates directly to `trends.google.com/trends/explore`.
+* Scrapes the "Rising Queries" section for a random B2B keyword.
+* Returns a list of trending topics with momentum.
 
-### B2B Review Sensor (Shopify, G2, ProductHunt, Chrome Web Store)
-Targets: 1-star and 2-star reviews of expensive, established software.
-Flow:
-* Identify specific missing features or massive UX failures.
-* Build a specialized, beautiful alternative to that specific workflow.
+**Phase 2 — ChatGPT Persona Synthesis**
+* Playwright opens ChatGPT using a stored authenticated session.
+* Injects a zero-shot psychological profiling prompt:
+  * Uses trending topics as grounded context.
+  * Asks ChatGPT to identify a specific B2B niche where professionals are furious.
+  * Forces output as a JSON array of 5 short, search-engine-friendly queries.
+* Queries are max 8 words — optimized for Reddit and Twitter search hit rates.
+
+**Phase 3 — Dynamic Query Injection**
+* Generated queries are passed into `senseTwitter()` and `senseReddit()` for that cycle, replacing static hardcoded queries.
+* Falls back to local LLM synthesis if ChatGPT session is unavailable.
+
+---
+
+## Environmental Sensing V3 (Agentic Browser)
+
+Organism no longer relies on APIs. It uses a **Vision-capable Agentic Browser** that physically navigates the web like a human.
+
+### BrowserAgent (`kernel/browserAgent.ts`)
+
+The core autonomous loop:
+
+1. Takes a full-page screenshot (JPEG, low-quality for cost efficiency).
+2. Maps all visible DOM elements to a numbered list.
+3. Calls `gpt-4o-mini` (cloud) or `llama3.2-vision` (local fallback) with the screenshot + element map.
+4. Executes the chosen action: `click`, `type`, `scroll_down`, `extract`, or `done`.
+5. Repeats until the goal is achieved or max steps reached.
+
+**Self-Correction Memory**: Previous actions are passed back into each subsequent prompt, preventing infinite loops.
+
+**Persistent Link Memory**: Visited URLs and extracted text snippets are stored in the `visited_links` PostgreSQL table and filtered from DOM snapshots — the agent never re-reads the same content.
+
+### Active Sensing Sources
+
+| Source | Module | Auth Required | Custom Queries |
+|---|---|---|---|
+| Hacker News | `sense/hn.ts` | No | No |
+| B2B App Reviews | `sense/reviews.ts` | No | No |
+| G2/Capterra | `sense/g2.ts` | No | No |
+| Twitter/X | `sense/twitter.ts` | Yes (`.auth/twitter.json`) | ✅ Yes |
+| LinkedIn | `sense/linkedin.ts` | Yes (`.auth/linkedin.json`) | No |
+| Reddit | `sense/reddit.ts` | Yes (`.auth/reddit.json`) | ✅ Yes |
+
+---
+
+## Hybrid LLM Routing
+
+Every LLM call goes through `cognition/llm.ts` which applies a **cloud-first, local-fallback** strategy:
+
+1. Check daily cloud budget in PostgreSQL. If exhausted → local.
+2. Try `gpt-4o-mini` (cloud). On failure → local.
+3. For vision tasks → `llama3.2-vision` (local).
+4. For text tasks → Configured `OLLAMA_MODEL` (default: `gemma3:12b`).
+
+---
+
+## Self-Improvement (Evolve & Reflect)
+
+* **`kernel/evolve.ts`** — Reads its own source code once per day and proposes code improvements for human review.
+* **`kernel/reflect.ts`** — Weekly analysis of which sensing sources produced the most viable opportunities. Adjusts `source_weight` policies in the database.
 
 ---
 
@@ -95,50 +144,31 @@ Flow:
 
 Each opportunity receives:
 
-* `pain_score` (based on intent language and willingness-to-pay)
-* `competitor_weakness_score` (based on negative review volumes)
-* `viability_score`
+* `pain_score` — intent language and willingness-to-pay signals
+* `competitor_weakness_score` — negative review volume
+* `viability_score` — composite score
 
-Only opportunities above the threshold, configurable in Mission Control, are reviewed.
-
----
-
-## The pitch: Automated Design & Build
-
-When viability is high, Organism acts as a digital craftsman.
-
-* It uses a premium `organism-ui-chassis` (Next.js, Tailwind, Framer Motion).
-* Instead of boilerplate, it calls the **Gemini API** to act as a Designer, dynamically generating optimized copy, color palettes, and UX flows.
-* The product is automatically pushed to production via the **Vercel/Render API**.
-* SEO is injected with semantic HTML and appropriate meta tags to drive organic discovery.
+Only opportunities above the threshold (configurable in Mission Control) are reviewed.
 
 ---
 
-## The Validation Engine: Targeted Traffic Protocol
+## The Build Module
 
-Stripe revenue is postponed until Phase 3 to reduce initial friction. The new metric is High-Intent Conversion.
+When viability is high, Organism deploys a product:
 
-* **The Hook**: Free Trial, Lead Magnet Tool, or "Join Waitlist".
-* **The Analytics**: Google Analytics / Plausible tracks exactly *where* the user came from (UTM parameters).
-* **The Decision**: If 100 targeted visitors (e.g. from our cold outreach) result in 0 emails, the idea is killed. If conversion > 5%, the Organism classifies it as **Alive** and flags it in Mission Control for monetization.
-
----
-
-## Reflection Engine
-
-* Analyze organic vs targeted traffic quality.
-* Analyze email conversion rates vs design choices.
-* Identify which sensing sources produce the most high-intent leads.
-* Adjust thresholds programmatically and log findings to Mission Control.
+1. Clones the `organism-ui-chassis` template (Next.js, Tailwind, Framer Motion).
+2. Calls the **Designer LLM** to generate: Hero Copy, Color Palette, Feature Matrix, Lead Magnet strategy.
+3. Injects the output into the chassis config as structured JSON.
+4. Deploys via Vercel API. Returns a live URL.
 
 ---
 
 # Survival Principles
 
-1. Kill aggressively (no zombie projects). 100 targeted views with 0 conversions = death.
-2. Build insanely beautiful products; people buy with their eyes.
+1. Kill aggressively. 100 targeted views with 0 conversions = death.
+2. Build insanely beautiful products; visitors buy with their eyes.
 3. Validate demand via direct cold outreach to high-intent targets.
-4. Autonomy above all: use Mission Control to monitor, not to micromanage.
+4. Autonomy above all: Mission Control monitors, never micromanages.
 5. High-Intent Email capture is the primary oxygen.
 
 ---
@@ -147,9 +177,9 @@ Stripe revenue is postponed until Phase 3 to reduce initial friction. The new me
 
 The organism is alive when:
 
-* It captures high-intent emails from verified, targeted traffic sources.
-* It deploys incredibly polished web apps without human intervention.
-* It automatically prunes failed ideas based on analytics data.
+* It synthesizes research and hunts opportunities without human prompting.
+* It deploys polished web apps without human intervention.
+* It prunes failed ideas based on analytics data.
 * It pushes meaningful updates to Mission Control autonomously.
 
-Without high-intent validation, it is only simulating life.
+Without revenue or high-intent validation, it is only simulating life.

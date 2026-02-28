@@ -94,7 +94,7 @@ function scoreCompetition(post: MockPost): number {
   return Math.min(tools.filter(t => text.includes(t)).length * 15, 100);
 }
 
-export async function senseReddit() {
+export async function senseReddit(customQueries?: string[]) {
   const agent = new BrowserAgent("reddit");
 
   let inserted = 0;
@@ -107,10 +107,12 @@ export async function senseReddit() {
   // To avoid immediately triggering Reddit's "You're doing that too much" IP ban,
   // we will only pick 2 random subreddits and 2 random queries per cycle.
   const selectedSubreddits = [...SUBREDDITS].sort(() => 0.5 - Math.random()).slice(0, 2);
-  const selectedQueries = [...PAIN_QUERIES].sort(() => 0.5 - Math.random()).slice(0, 2);
+  const activeQueries = customQueries && customQueries.length > 0
+    ? customQueries
+    : [...PAIN_QUERIES].sort(() => 0.5 - Math.random()).slice(0, 2);
 
   for (const subreddit of selectedSubreddits) {
-    for (const painQuery of selectedQueries) {
+    for (const painQuery of activeQueries) {
       try {
         await new Promise(r => setTimeout(r, 5000)); // Pause to respect rate limits
         const url = `https://www.reddit.com/r/${subreddit}/search/?q=${encodeURIComponent(painQuery)}&restrict_sr=1&sort=new`;
@@ -165,7 +167,7 @@ export async function senseReddit() {
   await agent.close();
 
   await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
-    ["reddit_sense_agent", { subreddits: SUBREDDITS.length, queries: PAIN_QUERIES.length, inserted, errors }]
+    ["reddit_sense_agent", { subreddits: SUBREDDITS.length, queries: activeQueries.length, inserted, errors }]
   );
 
   if (highValueFound.length > 0) {

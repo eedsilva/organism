@@ -42,7 +42,16 @@ export class BrowserAgent {
     async init() {
         if (!sharedBrowser) {
             const isHeadless = process.env.SHOW_BROWSER === "true" ? false : true;
-            sharedBrowser = await chromium.launch({ headless: isHeadless });
+            sharedBrowser = await chromium.launch({
+                headless: isHeadless,
+                channel: "chrome", // Use native Chrome for maximum stealth
+                ignoreDefaultArgs: ["--enable-automation"],
+                args: [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-infobars"
+                ]
+            });
         }
 
         const contextOptions: any = {
@@ -99,12 +108,14 @@ export class BrowserAgent {
                 if (visited.some(v => v === text || v === (el as HTMLAnchorElement).href)) continue;
 
                 const tag = el.tagName.toLowerCase();
+                const idAttr = el.id ? ` id="${el.id}"` : "";
+                const ariaLabel = el.getAttribute("aria-label") ? ` aria-label="${el.getAttribute("aria-label")}"` : "";
 
                 // Tag with ID for Playwright to click later
                 el.setAttribute("data-browser-agent-id", nextId.toString());
                 elementMap[nextId] = `[data-browser-agent-id="${nextId}"]`;
 
-                promptLines.push(`[${nextId}] <${tag}>: ${text.slice(0, 100)}`);
+                promptLines.push(`[${nextId}] <${tag}${idAttr}${ariaLabel}>: ${text.slice(0, 100)}`);
                 nextId++;
             }
 
@@ -215,8 +226,18 @@ Respond ONLY with strictly valid JSON in this exact format, with no markdown for
                 if (call.action === "type" && call.elementId && call.text) {
                     const selector = snapshot.elementMap[call.elementId];
                     if (selector) {
-                        await this.page!.fill(selector, call.text, { force: true });
-                        await this.page!.press(selector, 'Enter');
+                        try {
+                            console.log(`  ⌨️  Typing into [${call.elementId}]: ${call.text.slice(0, 50).replace(/\n/g, " ")}...`);
+                            const loc = this.page!.locator(selector).first();
+                            await loc.click({ force: true, timeout: 5000 });
+                            await loc.focus();
+                            await this.page!.waitForTimeout(200);
+                            await this.page!.keyboard.insertText(call.text);
+                            await this.page!.waitForTimeout(500);
+                            await this.page!.keyboard.press('Enter');
+                        } catch (err: any) {
+                            console.error(`  ⚠️ Could not type into [${call.elementId}]: ${err.message}`);
+                        }
                     }
                 }
 

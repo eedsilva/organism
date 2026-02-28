@@ -13,6 +13,7 @@ import { generatePlan } from "./plan";
 import { runDigest } from "./digest";
 import { runReflect } from "./reflect";
 import { runEvolve } from "./evolve";
+import { runDeepResearch } from "../sense/research";
 
 async function selfCheck() {
   const diagnostics: Record<string, any> = {};
@@ -65,13 +66,16 @@ export async function runCycle() {
     // 2. Sense — sequentially to protect local LLM compute & memory
     console.log("\n👁️  Sensing...");
 
+    // 2a. Deep Research - Agentic UI
+    const customQueries = await runDeepResearch();
+
     const sensors = [
       { name: "HN", fn: senseHackerNews },
       { name: "B2B Reviews", fn: senseAppReviews },
       { name: "G2/Capterra Negative Reviews", fn: senseG2 },
-      { name: "Twitter Signals", fn: senseTwitter },
+      { name: "Twitter Signals", fn: () => senseTwitter(customQueries) },
       { name: "LinkedIn", fn: senseLinkedIn },
-      { name: "Reddit", fn: senseReddit },
+      { name: "Reddit", fn: () => senseReddit(customQueries) },
     ];
 
     for (const sensor of sensors) {

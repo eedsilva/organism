@@ -11,11 +11,13 @@ If it fails to generate revenue, it adapts or dies.
 
 Organism runs as a distributed, event-driven automaton through several decoupled components:
 
-1. **Heartbeat Daemon (`kernel/heartbeat.ts`)** – The main loop. Senses market pain across Hacker News, Upwork, and G2, logs opportunities.
-2. **LLM Worker Pool (`kernel/workers/llm.ts`)** – Asynchronously scores opportunities, ranks viability, and plans go-to-market strategies using `gpt-4o-mini` to keep costs low.
-3. **Validation Worker Pool (`kernel/workers/validation.ts`)** – Concurrently launches preorders (up to \`max_concurrent_validations\`) and builds final products for paying users.
-4. **Webhook Server (`kernel/webhook.ts`)** – Captures real-time waitlist signups and broadcasts SSE events to the UI.
-5. **Mission Control UI (`mission-control/`)** – The operator dashboard to monitor the organism in real-time.
+1. **Heartbeat Daemon (`kernel/heartbeat.ts`)** – The main loop. Runs Deep Research, senses market pain across Hacker News, Reddit, Twitter, LinkedIn, G2, and App Reviews. Logs opportunities.
+2. **Deep Research Engine (`sense/research.ts`)** – Before each sensing cycle, navigates to Google Trends to find rising topics, then feeds them into ChatGPT to synthesize 5 high-specificity B2B search queries. These queries are passed directly into the Reddit and Twitter sensing modules.
+3. **Agentic Browser (`kernel/browserAgent.ts`)** – A Vision-capable autonomous web driver powered by `gpt-4o-mini`. Takes screenshots, reads the DOM, and autonomously decides what to click, type, scroll, or extract from any website.
+4. **LLM Worker Pool (`kernel/workers/llm.ts`)** – Asynchronously scores opportunities, ranks viability, and plans go-to-market strategies.
+5. **Validation Worker Pool (`kernel/workers/validation.ts`)** – Concurrently launches preorders and builds final products for paying users.
+6. **Webhook Server (`kernel/webhook.ts`)** – Captures real-time waitlist signups and broadcasts SSE events to the UI.
+7. **Mission Control UI (`mission-control/`)** – The operator dashboard to monitor the organism in real-time.
 
 All state transitions use event-sourcing stored in PostgreSQL.
 
@@ -27,12 +29,20 @@ All state transitions use event-sourcing stored in PostgreSQL.
 
 * Node.js (TypeScript)
 * Express (Webhook Server & SSE)
-* Node.js Worker Threads (for isolated sub-agent Colonies)
+* Playwright + Stealth Plugin (Agentic Browser)
 * Next.js (Mission Control & generated Product templates)
 * Stripe API (Revenue signal)
 
+### Hybrid LLM Routing
+
+Organism uses a **cloud-first, local-fallback** strategy for all LLM calls:
+
+* **Cloud (Primary)**: `gpt-4o-mini` via OpenAI API — used for vision reasoning and all browser agent actions within the daily budget.
+* **Local (Fallback)**: Ollama models (e.g., `llama3.2-vision`, `gemma3:12b`) — used when cloud budget is exhausted or as a cost-saving alternative.
+* Budget tracking is stored in PostgreSQL and checked before every cloud API call.
+
 ### The "UI Chassis"
-Organism uses a highly optimized, pre-built React/Tailwind/Framer Motion template called `organism-ui-chassis` for product validation. Instead of slowly generating flawed React code for every idea, the LLM generates a simple `chassis.config.json` configuration file that dictates copy, colors, and layout structure—drastically reducing API inference costs and ensuring pixel-perfect output.
+Organism uses a pre-built React/Tailwind/Framer Motion template called `organism-ui-chassis` for product validation. Instead of slowly generating flawed React code for every idea, the LLM generates a `chassis.config.json` that dictates copy, colors, and layout — drastically reducing API costs.
 
 ---
 
@@ -49,13 +59,29 @@ Only high-viability opportunities move forward. The event-sourced state machine 
 
 ---
 
+### Deep Research Pipeline
+
+Every sensing cycle begins by running the research pipeline:
+
+1. **Google Trends** (`sense/trends.ts`) — Playwright navigates to `trends.google.com` and extracts rising B2B-related search queries.
+2. **ChatGPT Synthesis** (`sense/research.ts`) — Uses a stored ChatGPT session to inject a persona-engineering prompt enriched with the trending topics. ChatGPT identifies a specific painful niche and generates 5 targeted search queries.
+3. **Dynamic Query Injection** — The queries are passed directly into `senseTwitter()` and `senseReddit()` for that cycle.
+
+---
+
+### Persistent Memory (`kernel/memory.ts`)
+
+The agent never re-visits the same link or re-processes the same text snippet. Every URL clicked and every piece of text extracted is stored in the `visited_links` PostgreSQL table and filtered out of subsequent DOM snapshots.
+
+---
+
 ### Validation Strategy
 
 The organism does not build first.
 
 It validates in stages:
 
-1. **Signal detection** (Upwork, G2, Hacker News)
+1. **Deep Research + Signal detection** (Google Trends → ChatGPT → Reddit/Twitter/HN/G2)
 2. **Outreach drafts** (Reddit etc.)
 3. **Preorder page** (Chassis JSON generation)
 4. **Payment/Lead received** (Webhook capture)
@@ -68,7 +94,7 @@ One real payment is worth more than 100 signups.
 ### Colony Architecture (Self-Replication)
 
 When an Organism proves successful in a specific niche, it can spawn child sub-agents (**Colonies**).
-Instead of heavy Docker containers, colonies use **Node.js Worker Threads** mapped to **isolated PostgreSQL schemas** (`colony_xyz`). This allows parent and children to share infrastructure while operating with mutated, independent environments and policy parameters.
+Instead of heavy Docker containers, colonies use **Node.js Worker Threads** mapped to **isolated PostgreSQL schemas** (`colony_xyz`).
 
 ---
 
@@ -77,9 +103,14 @@ Instead of heavy Docker containers, colonies use **Node.js Worker Threads** mapp
 ```
 /kernel            → Core logic and Event loop
   /workers         → LLM and Validation async pools
-/sense             → HN, G2, Upwork sensors
-/cognition         → LLM routing (Cloud/Local)
-/scripts           → Migrations and utilities
+  browserAgent.ts  → Agentic Vision Browser
+  memory.ts        → PostgreSQL-backed visited-link tracking
+/sense             → Sensing modules (HN, G2, Reviews, Twitter, Reddit, LinkedIn)
+  research.ts      → Deep Research: Google Trends → ChatGPT → dynamic queries
+  trends.ts        → Google Trends Playwright scraper
+/cognition         → LLM routing (Cloud/Local hybrid)
+/scripts           → Auth session capture, migrations, and utilities
+  captureExistingSession.ts → Saves browser sessions from running Chrome
 /products          → Generated product artifacts
 /state             → DB Schema, policies, event-sourcing routines
 /mission-control   → Operator Dashboard UI
@@ -99,31 +130,44 @@ npm run infra:start
 
 ### 2. Run Database Migrations
 
-Apply the schema and baseline policies. Safe to run multiple times.
-
 ```bash
 npm run db:migrate
 ```
 
-### 3. Start the Webhook Server
+### 3. Capture Auth Sessions (for Agentic Browser)
 
-In a new terminal, start the webhook server to handle incoming lead captures:
+Open Chrome in debug mode to allow session capture:
+
+```bash
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+```
+
+Log into ChatGPT and Reddit in that Chrome window. Then run:
+
+```bash
+npx ts-node scripts/captureExistingSession.ts chatgpt
+npx ts-node scripts/captureExistingSession.ts reddit
+```
+
+### 4. Start the Webhook Server
 
 ```bash
 npm run webhook
 ```
 
-### 4. Start the Organism Heartbeat
-
-In the main terminal, start the daemon (this spins up the LLM and Validation worker pools automatically):
+### 5. Start the Organism Heartbeat
 
 ```bash
 npm start
 ```
 
-### 5. Start Mission Control (UI)
+To watch the browser work visually:
 
-In a third terminal, start the operator dashboard to watch the organism work:
+```bash
+SHOW_BROWSER=true npm start
+```
+
+### 6. Start Mission Control (UI)
 
 ```bash
 npm run mission-control
@@ -133,9 +177,7 @@ npm run mission-control
 
 ## Configuration
 
-Set up your `.env` file first:
-
-```
+```env
 DB_HOST=localhost
 DB_PORT=5432
 DB_USER=organism
@@ -145,6 +187,8 @@ WEBHOOK_PORT=3001
 
 HEARTBEAT_INTERVAL_MS=15000
 OPENAI_API_KEY=sk-...
+OLLAMA_MODEL=gemma3:12b        # Optional: preferred local model
+SHOW_BROWSER=true              # Optional: make browser windows visible
 ```
 
 ---

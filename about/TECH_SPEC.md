@@ -1,34 +1,35 @@
-# Organism V2 — Technical Specification
+# Organism V3 — Technical Specification
 
 ## 1. Purpose
 
 Organism is a locally running autonomous economic agent that:
 
-1. Detects validated economic pain from high-intent B2B and freelance sources.
-2. Acts as an AI Designer/Developer to build stunning, conversion-optimized Next.js applications using Gemini/GPT-4o.
-3. Automatically deploys apps globally via Vercel/Render APIs.
-4. Validates demand through targeted cold outreach, SEO, and email capture.
-5. Tracks traffic quality via integrated Analytics (Google Analytics / Plausible / PostHog).
-6. Is monitored strictly through a visual, local Next.js **Mission Control** dashboard.
+1. Runs a **Deep Research pipeline** (Google Trends → ChatGPT) to synthesize targeted B2B search queries each cycle.
+2. Uses a **Vision-capable Agentic Browser** (Playwright + `gpt-4o-mini`) to physically navigate Reddit, Twitter, LinkedIn, HN, and G2.
+3. Acts as an AI Designer/Developer to build conversion-optimized Next.js applications.
+4. Automatically deploys apps globally via Vercel/Render APIs.
+5. Validates demand through targeted cold outreach and email capture.
+6. Is monitored through a visual, local Next.js **Mission Control** dashboard.
 
 ---
 
 # 2. Runtime Architecture
 
-## 2.1 Core Loop (Heartbeat)
+## 2.1 Core Loop (Heartbeat, `kernel/cycle.ts`)
 
 Runs via a continuous, non-overlapping background process:
 
 1. Boot & Self-check against PostgreSQL.
-2. Read configuration from Mission Control overrides.
-3. Sensing (Upwork/B2B APIs & Scrapers).
-4. LLM Scoring & Opportunity Selection.
-5. Design & Copy generation via Advanced LLM (Gemini API).
-6. Build & Chassis Injection (Next.js + Tailwind).
-7. External Deployment Vercel API.
-8. Direct Outreach (Cold Email scheduling via Resend).
-9. Wait for Analytics Webhooks / Email Captures.
-10. Evaluation & Kill/Live Decision.
+2. Daily Digest (push Telegram/Email update if configured).
+3. Weekly Reflection (adjust sensor weights from conversion data).
+4. Daily Self-improvement (propose code changes via `evolve.ts`).
+5. Budget check — abort cycle if cloud budget exhausted.
+6. **Deep Research** — Google Trends → ChatGPT → 5 dynamic search queries.
+7. Sequential Agentic Sensing (HN, Reviews, G2, Twitter, LinkedIn, Reddit).
+8. LLM Scoring & Opportunity Selection.
+9. Plan generation (queued to LLM Worker Pool).
+10. Build & Deploy (triggered asynchronously by Validation Worker Pool).
+11. Self-check diagnostics (DB, disk, internet).
 
 ---
 
@@ -36,133 +37,155 @@ Runs via a continuous, non-overlapping background process:
 
 ## 3.1 Local Services (Docker)
 
-* PostgreSQL (Core State)
-* Redis (Optional fast cache/queue)
+* PostgreSQL (Core State, Budget Tracking, Visited Links Memory)
 
 ## 3.2 Execution Environment
 
 * Node.js (TypeScript) — The Brain / Loop
+* **Playwright** (`playwright-extra` + stealth plugin) — Agentic Browser
 * Next.js (Local `localhost:3000`) — Mission Control Dashboard
-* `organism-ui-chassis` (Next.js) — The generated remote products
+* `organism-ui-chassis` (Next.js) — Generated remote products
 * Vercel API / Render API — Deployment Infrastructure
-* Gemini API / GPT-4o — Design & Reasoning
+* OpenAI `gpt-4o-mini` / GPT-4o — Cloud Vision & Reasoning
+* Ollama (`gemma3:12b`, `llama3.2-vision`) — Local LLM Fallback
 * Resend / SendGrid — Cold Emails & Push Notifications
-* Google Analytics Data API / Plausible API — Targeted Traffic Verification
 
 ---
 
 # 4. Database Schema (Core Tables)
 
 ## opportunities
+* id, source, pain_score, viability_score, status, metadata (JSONB), created_at
 
-* id
-* source (e.g., 'upwork', 'g2')
-* target_contact (email/linkedin if applicable)
-* pain_score
-* viability_score
-* status (new, validating, building, alive, dead)
-* metadata (JSONB - for source specific data)
-* created_at
+## visited_links
+* id, url, text_snippet, created_at
+* Prevents BrowserAgent from re-visiting URLs or re-extracting identical text.
 
-## deployments
+## llm_spend_daily
+* id, model, date, input_tokens, output_tokens, cost_usd
+* Used by hybrid LLM router to enforce daily cloud budget limits.
 
-* id
-* opportunity_id
-* vercel_project_id
-* live_url
-* design_tokens (JSONB - colors, typography injected)
-* created_at
-
-## metrics_validation
-
-* id
-* opportunity_id
-* date
-* traffic_total
-* traffic_targeted (verified via UTM/Source)
-* emails_captured
-* conversion_rate
+## events
+* id, type, payload (JSONB), timestamp
+* Event-sourcing log for all agent actions (sense, plan, build, etc.)
 
 ## policies
-
-* key (e.g., 'budget_daily', 'kill_threshold')
-* value (JSONB)
-
----
-
-# 5. Sensing Layer (The Diet)
-
-## 5.1 Freelance Job Sensor (Upwork/B2B Boards)
-
-Target: Manual tasks being outsourced.
-Mechanism:
-* RSS or API scraping for specific keywords ("data entry", "pdf to excel", "manual scrape").
-* LLM extracts the specific task and evaluates if a micro-SaaS can automate it.
-* Extracts contact info (if available) for downstream outreach.
-
-## 5.2 B2B Review Sensor (Shopify, G2, Chrome Web Store, ProductHunt)
-
-Target: 1-star reviews on successful apps.
-Mechanism:
-* Scrape reviews filtering for 1-2 stars.
-* LLM groups complaints to identify a unified "Missing Feature" or "UX Failure".
-* Generates an opportunity to build a standalone app solving just that failure.
+* key (e.g., 'budget_daily', 'kill_threshold', 'source_weights')
+* value (JSONB) — configurable from Mission Control at runtime.
 
 ---
 
-# 6. The Build Module (Dynamic Design)
+# 5. Deep Research Engine
+
+## 5.1 Google Trends Scraper (`sense/trends.ts`)
+
+* Playwright launches native Chrome (headless, stealth flags set).
+* Navigates to `trends.google.com/trends/explore?q={keyword}` with a random B2B keyword.
+* Extracts the "Rising Queries" section of the related queries widget.
+* Returns `TrendTopic[]` with keyword and relative score.
+* Gracefully degrades if Google's SPA doesn't render the needed section.
+
+## 5.2 ChatGPT Persona Synthesis (`sense/research.ts`)
+
+* Playwright opens `chatgpt.com` using a stored session from `.auth/chatgpt.json`.
+* Waits for the `#prompt-textarea` contenteditable div to appear.
+* Types the research prompt (with Google Trends context injected) using `page.keyboard.type()`.
+* Waits for the stop button to disappear (generation complete).
+* Extracts the last assistant message using `[data-message-author-role='assistant']`.
+* Parses the JSON array from the response, strips markdown fences, sanitizes escaped quotes.
+* Truncates each query to max 8 words for search-engine compatibility.
+* Falls back to `callBrain()` (local/cloud LLM) if session is unavailable.
+
+---
+
+# 6. Agentic Browser (`kernel/browserAgent.ts`)
+
+## 6.1 Core Vision Loop
+
+Each step:
+
+1. `page.screenshot()` → JPEG, `quality: 50`, `detail: "low"` for minimum API cost.
+2. `getPageSnapshot()` injects JS to map all visible interactive elements to numbered IDs. Annotates each with `id`, `aria-label`, and inner text.
+3. Filters DOM elements that match visited URLs or previously extracted text snippets.
+4. Calls `callBrain(prompt, "Browser Agent Vision Step", false, "chat", imageBase64)`.
+5. Parses JSON action: `click | type | scroll_down | extract | done`.
+6. Executes action using Playwright with `locator.click({ force: true })` or `keyboard.insertText()`.
+7. Stores action in `previousActions[]` for self-correction context.
+
+## 6.2 Type Action
+
+* Uses `locator.click()` + `locator.focus()` + `keyboard.insertText()` — does NOT use `page.fill()` which is incompatible with React `contenteditable` divs.
+* Presses `Enter` after inserting text.
+
+## 6.3 Singleton Pattern
+
+* One shared `Browser` instance (`sharedBrowser`) for the lifetime of a cycle.
+* Each sensor creates an isolated `BrowserContext` + `Page` with its own auth session.
+* Calling `agent.close()` closes only the context and page, not the shared browser.
+* `BrowserAgent.closeSharedBrowser()` is called at cycle end.
+
+---
+
+# 7. Hybrid LLM Routing (`cognition/llm.ts`)
+
+All LLM calls go through `callBrain()`:
+
+1. **Budget Check**: If `sum(cost_usd) >= policy.budget_daily` → skip cloud.
+2. **Cloud Route**: `gpt-4o-mini` via OpenAI. Logs tokens & cost to `llm_spend_daily`.
+3. **Local Route (Fallback)**: Ollama via `OLLAMA_MODEL` env var (default: `gemma3:12b`).
+4. **Vision Fallback**: `llama3.2-vision` for image-bearing requests when cloud is unavailable.
+
+---
+
+# 8. Authentication & Sessions
+
+Sessions are stored as Playwright `storageState` JSON files in `.auth/`.
+
+To capture a session from your running browser:
+
+```bash
+# Step 1: Launch Chrome with debugging port open
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+
+# Step 2: Log in to the target platform in that Chrome window
+
+# Step 3: Run the capture script
+npx ts-node scripts/captureExistingSession.ts chatgpt   # or reddit, linkedin, etc.
+```
+
+The `captureExistingSession.ts` script connects to Chrome via CDP, extracts `storageState`, and saves it. The `.auth/` directory is gitignored.
+
+---
+
+# 9. The Build Module (Dynamic Design)
 
 Trigger: `viability_score` > Threshold.
 
-1. **The Chassis**: Organism clones a local `organism-ui-chassis` template (Next.js 14+, Tailwind, Framer Motion).
-2. **The Designer LLM**: Organism sends the opportunity context to Gemini/GPT-4o, prompting for:
-   * Hero Copy & Value Proposition.
-   * Color Palette (Hex codes).
-   * Feature Matrix.
-   * Lead Magnet Strategy.
-3. **Injection**: The LLM outputs structured JSON, which is injected into the Chassis configuration files.
-4. **Deployment**: Organism calls Vercel API `/v9/projects` to create a new project and pushes the code. Return live URL.
+1. **The Chassis**: Clone `organism-ui-chassis` (Next.js 14+, Tailwind, Framer Motion).
+2. **The Designer LLM**: Send opportunity context to GPT-4o → Hero Copy, Color Palette, Feature Matrix, Lead Magnet.
+3. **Injection**: LLM outputs structured JSON → injected into chassis config.
+4. **Deployment**: Vercel API `/v9/projects` → live URL returned.
 
 ---
 
-# 7. The Outreach & Tracking Module
+# 10. Mission Control (UI)
 
-1. **Direct Pitching**: If the source was Upwork, use Resend API to send a highly personalized cold email to the poster with the generated Vercel URL, appending `?utm_source=cold_email`.
-2. **Analytics Sync**: The Next.js chassis includes GA/Plausible tracking scripts.
-3. **Lead Capture**: The chassis includes an email capture form that POSTs to an Organism webhook or stores directly in PostgreSQL.
-
----
-
-# 8. Decision Engine (Kill or Live)
-
-Every 24 hours post-deployment, Organism evaluates `metrics_validation`.
-
-Kill Condition (Example):
-* `traffic_targeted` > 100 AND `emails_captured` == 0 -> Mark as `dead`. Invoke Vercel API to teardown project.
-
-Live Condition:
-* `emails_captured` / `traffic_targeted` > 5% -> Mark as `alive`. Send Push Notification to CEO.
+* Local Next.js app querying PostgreSQL and the event stream.
+* **Kanban view**: opportunities from Sensing → Validating → Building → Alive/Dead.
+* **Metrics dashboards**: source conversion rates, LLM spend, cycle history.
+* **Control panel**: update `policies` table in real-time (budget, thresholds, weights).
 
 ---
 
-# 9. Mission Control (UI)
+# 11. Notifications
 
-Replaces Telegram. A local Next.js app querying the PostgreSQL database directly.
+Daily async digest via Telegram or Email:
 
-Provides:
-* **Kanban view** of all opportunities.
-* **Metrics dashboards** pulling from Plausible API and local `metrics_validation` table.
-* **Control panel** to update the `policies` table in real-time.
-
----
-
-# 10. Notifications
-
-To maintain autonomy while providing visibility, Organism uses Resend to send a daily asynchronous digest email or a read-only Telegram channel message:
 * "Deployed Project X to vercel.app"
 * "Killed Project Y (0% conversion on 150 targeted clicks)"
-* "Project Z is ALIVE! (8% conversion rate)" 
+* "Project Z is ALIVE! (8% conversion rate)"
+* "Deep Research identified niche: [prior auth automation for small PT clinics]"
 
 ---
 
-End of Technical Specification.
+End of Technical Specification V3.
