@@ -1,4 +1,4 @@
-import fetch from "node-fetch";
+import { BrowserAgent } from "../kernel/browserAgent";
 import { query } from "../state/db";
 import { sendPushNotification } from "../kernel/notify";
 
@@ -93,55 +93,46 @@ function scoreCompetition(tweet: Tweet): number {
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 export async function senseTwitter() {
-    const token = process.env.TWITTER_BEARER_TOKEN;
-
-    if (!token) {
-        console.log("  ⚠️  Twitter: No TWITTER_BEARER_TOKEN set. Skipping Twitter sensing.");
-        return;
-    }
+    const agent = new BrowserAgent("twitter");
 
     let inserted = 0;
     let errors = 0;
     const highValueFound: string[] = [];
 
+    console.log("  🐦 Starting Agentic Twitter Sensing...");
+
     for (const queryStr of TWITTER_QUERIES) {
         try {
-            // Free tier respects 1 sec per request nicely
-            await sleep(1000);
+            const encodedQuery = encodeURIComponent(`${queryStr} lang:en`);
+            const url = `https://x.com/search?q=${encodedQuery}&src=typed_query&f=live`;
 
-            // Query requires -is:retweet to filter out duplicate thoughts
-            const encodedQuery = encodeURIComponent(`${queryStr} -is:retweet lang:en`);
-            const url = `https://api.twitter.com/2/tweets/search/recent?query=${encodedQuery}&tweet.fields=created_at,public_metrics,author_id&max_results=10`;
+            const goal = `Scroll through the tweets. Find people complaining about manual work, wishing for a tool, or asking about software. Extract the full text of any relevant tweet you find.`;
 
-            const res = await fetch(url, {
-                headers: { "Authorization": `Bearer ${token}` }
-            });
+            // Run the autonomous agent loop
+            const extractedText = await agent.runTask(url, goal, 6);
 
-            if (!res.ok) {
-                errors++;
-                continue;
+            if (!extractedText || extractedText.trim().length === 0) {
+                continue; // LLM found nothing on this run
             }
 
-            const data: any = await res.json();
-            const tweets: Tweet[] = data.data || [];
+            // The LLM returns a blob of extracted text. We'll treat the entire extraction for this query as one signal for now, or split by lines if it extracted multiple.
+            const lines = extractedText.split('\n').filter((l: string) => l.length > 10);
 
-            for (const tweet of tweets) {
-                if (!tweet.text || tweet.text.length < 10) continue;
+            for (const text of lines) {
+                // Mock tweet object to reuse our scoring functions
+                const mockTweet: Tweet = {
+                    id: `agent-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                    text: text
+                };
 
-                const painScore = scorePain(tweet); // Calculate pain
-                const wtpScore = scoreWtp(tweet); // Calculate WTP
-                const compScore = scoreCompetition(tweet); // Calculate competition
+                const painScore = scorePain(mockTweet);
+                const wtpScore = scoreWtp(mockTweet);
+                const compScore = scoreCompetition(mockTweet);
                 const viability = Math.max(0, Math.min(100, painScore + wtpScore - compScore));
 
-                const evidenceUrl = `https://twitter.com/i/web/status/${tweet.id}`;
+                // We don't have the exact tweet URL since we didn't force the LLM to click the timestamp, so we link to the search page.
+                const evidenceUrl = url;
 
-                const rawText = [
-                    `Tweet ID: ${tweet.id} | Author: ${tweet.author_id}`,
-                    `Metrics: ❤️ ${tweet.public_metrics?.like_count || 0} 💬 ${tweet.public_metrics?.reply_count || 0}`,
-                    tweet.text,
-                ].join("\n").slice(0, 3000);
-
-                // Store into standard pipeline
                 const result = await query(
                     `INSERT INTO opportunities 
              (source, title, evidence_url, pain_score, wtp_score, competition_score, raw_text, status)
@@ -151,35 +142,37 @@ export async function senseTwitter() {
                  wtp_score        = GREATEST(opportunities.wtp_score, $5),
                  seen_count       = COALESCE(opportunities.seen_count, 1) + 1
            RETURNING id, (xmax = 0) AS is_new`,
-                    ["twitter", tweet.text.slice(0, 500), evidenceUrl, painScore, wtpScore, compScore, rawText]
+                    ["twitter-agent", text.slice(0, 500), evidenceUrl, painScore, wtpScore, compScore, text.slice(0, 3000)]
                 );
 
                 const isNew = result.rows[0]?.is_new;
                 if (isNew) inserted++;
 
-                // Track high value signals
                 if (isNew && viability >= 60) {
-                    highValueFound.push(`[v:${viability}] ${tweet.text.slice(0, 70)}`);
+                    highValueFound.push(`[v:${viability}] ${text.slice(0, 70)}`);
                 }
             }
 
         } catch (err: any) {
+            console.error(`  ❌ Twitter Agent Error for query "${queryStr}":`, err.message);
             errors++;
             continue;
         }
     }
 
+    await agent.close();
+
     await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
-        ["twitter_sense", { queries: TWITTER_QUERIES.length, inserted, errors }]
+        ["twitter_sense_agent", { queries: TWITTER_QUERIES.length, inserted, errors }]
     );
 
     if (highValueFound.length > 0) {
-        const msg = `🔭 *${highValueFound.length} high-value Twitter signal${highValueFound.length > 1 ? "s" : ""} found*\n\n`
+        const msg = `🔭 *${highValueFound.length} high-value agentic Twitter signal${highValueFound.length > 1 ? "s" : ""} found*\n\n`
             + highValueFound.slice(0, 5).map(s => `• ${s}`).join("\n")
             + `\n\nReview them in Mission Control.`;
 
         await sendPushNotification(`High-Value Twitter Signals Detected`, msg);
     }
 
-    console.log(`  Twitter: ${inserted} new, ${errors} errors (OAuth)`);
+    console.log(`  Twitter (Agent): ${inserted} new, ${errors} errors`);
 }

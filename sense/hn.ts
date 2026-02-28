@@ -1,7 +1,11 @@
-import fetch from "node-fetch";
+import { BrowserAgent } from "../kernel/browserAgent";
 import { query } from "../state/db";
+import { sendPushNotification } from "../kernel/notify";
 
-// Multiple queries to cast a wider net
+/**
+ * hn.ts — Pain sensing from Hacker News using Agentic Browser.
+ */
+
 const HN_QUERIES = [
   "Ask HN: tool for",
   "Ask HN: is there a",
@@ -13,91 +17,105 @@ const HN_QUERIES = [
 ];
 
 interface HNHit {
-  objectID: string;
-  title: string;
-  url?: string;
-  story_text?: string;
-  num_comments?: number;
-  points?: number;
-}
-
-function buildUrl(q: string) {
-  return `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(q)}&tags=story&hitsPerPage=5`;
+  text: string;
 }
 
 function scorePain(hit: HNHit): number {
-  const title = (hit.title || "").toLowerCase();
-  const body = (hit.story_text || "").toLowerCase();
-  const text = title + " " + body;
-
+  const text = hit.text.toLowerCase();
   let pain = 0;
 
-  // High signal: explicit problem statements
-  if (title.includes("ask hn")) pain += 15;
-  if (text.includes("paying")) pain += 20;
-  if (text.includes("expensive")) pain += 25;
-  if (text.includes("no good")) pain += 25;
-  if (text.includes("manual")) pain += 20;
-  if (text.includes("painful")) pain += 25;
-  if (text.includes("wish")) pain += 20;
-  if (text.includes("alternative")) pain += 20;
-  if (text.includes("replace")) pain += 20;
-  if (text.includes("automate")) pain += 20;
-  if (text.includes("waste")) pain += 15;
-  if (text.includes("hours")) pain += 15;
-  if (text.includes("every week")) pain += 20;
-  if (text.includes("every day")) pain += 20;
+  const signals: [string, number][] = [
+    ["manually", 25], ["wish there was", 30], ["no good", 25],
+    ["spending hours", 30], ["every week", 20], ["every day", 20],
+    ["paying", 25], ["expensive", 20], ["too much", 20],
+    ["nightmare", 20], ["frustrating", 15], ["wasting time", 25],
+    ["can't find", 20], ["looking for a tool", 30], ["automate", 20],
+    ["still doing this manually", 35], ["need to automate", 30],
+    ["process is broken", 35], ["hate having to", 25],
+    ["can't believe there isn't", 35], ["looking for software", 30],
+    ["tired of spreadsheets", 35], ["anyone built something", 20],
+    ["ask hn", 15]
+  ];
 
-  // Engagement = real pain
-  const comments = hit.num_comments || 0;
-  const points = hit.points || 0;
-  pain += Math.min(comments * 2, 40);
-  pain += Math.min(points / 10, 20);
+  for (const [signal, score] of signals) {
+    if (text.includes(signal)) pain += score;
+  }
 
   return Math.min(pain, 100);
 }
 
 export async function senseHackerNews() {
+  const agent = new BrowserAgent(); // No session needed for public HN search
+
   let inserted = 0;
+  let errors = 0;
+  const highValueFound: string[] = [];
 
-  for (const q of HN_QUERIES) {
+  console.log("   Hacker News: Starting Agentic Sensing...");
+
+  // To avoid bot detection, pick 2 random queries per cycle
+  const selectedQueries = [...HN_QUERIES].sort(() => 0.5 - Math.random()).slice(0, 2);
+
+  for (const q of selectedQueries) {
     try {
-      const res = await fetch(buildUrl(q));
-      if (!res.ok) continue;
+      await new Promise(r => setTimeout(r, 3000)); // Respect HN rate limits
 
-      const data: any = await res.json();
+      const url = `https://hn.algolia.com/?q=${encodeURIComponent(q)}&sort=byDate&type=story`;
+      const goal = `Scroll through the search results. Find technical founders or developers complaining about manual work, painful processes, or asking for tools. Extract the full text of any relevant post.`;
 
-      for (const hit of (data.hits || []) as HNHit[]) {
-        const title = hit.title || "";
-        if (!title) continue;
+      const extractedText = await agent.runTask(url, goal, 4);
 
-        const url = hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`;
-        const pain = scorePain(hit);
+      if (!extractedText || extractedText.trim().length === 0) {
+        continue; // Nothing found
+      }
 
-        // Store raw text so plan.ts has real context to work with
-        const rawText = [
-          hit.title,
-          hit.story_text || "",
-        ].join("\n").slice(0, 2000);
+      const lines = extractedText.split('\n').filter((l: string) => l.length > 20);
 
-        await query(
-          `INSERT INTO opportunities (source, title, evidence_url, pain_score, raw_text)
-           VALUES ($1, $2, $3, $4, $5)
+      for (const text of lines) {
+        const hit: HNHit = { text };
+        const painScore = scorePain(hit);
+
+        // HN signals are generally high intent but low WTP explicitly, so we just use pain.
+        const viability = painScore;
+
+        const result = await query(
+          `INSERT INTO opportunities (source, title, evidence_url, pain_score, raw_text, status)
+           VALUES ($1, $2, $3, $4, $5, 'new')
            ON CONFLICT (evidence_url) DO UPDATE
-             SET pain_score = GREATEST(opportunities.pain_score, $4)`,
-          ["hackernews", title, url, pain, rawText]
+             SET pain_score = GREATEST(opportunities.pain_score, $4),
+                 seen_count = COALESCE(opportunities.seen_count, 1) + 1
+           RETURNING id, (xmax = 0) AS is_new`,
+          ["hackernews-agent", text.slice(0, 100), url, painScore, text.slice(0, 2000)]
         );
 
-        inserted++;
+        const isNew = result.rows[0]?.is_new;
+        if (isNew) inserted++;
+
+        if (isNew && viability >= 50) {
+          highValueFound.push(`[v:${viability}] ${text.slice(0, 70)}`);
+        }
       }
-    } catch {
-      // One query failing shouldn't kill the rest
+
+    } catch (err: any) {
+      console.error(`  ❌ HN Agent Error for query "${q}":`, err.message);
+      errors++;
       continue;
     }
   }
 
+  await agent.close();
+
   await query(
     `INSERT INTO events (type, payload) VALUES ($1, $2)`,
-    ["hn_sense", { queries: HN_QUERIES.length, inserted }]
+    ["hn_sense_agent", { queries: selectedQueries.length, inserted, errors }]
   );
+
+  if (highValueFound.length > 0) {
+    const msg = `🔭 *${highValueFound.length} high-value agentic HN signal${highValueFound.length > 1 ? "s" : ""} found*\n\n`
+      + highValueFound.slice(0, 5).map(s => `• ${s}`).join("\n");
+
+    await sendPushNotification(`High-Value HN Signals Detected`, msg);
+  }
+
+  console.log(`  Hacker News (Agent): ${inserted} new, ${errors} errors`);
 }

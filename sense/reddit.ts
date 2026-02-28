@@ -1,26 +1,18 @@
-import fetch from "node-fetch";
+import { BrowserAgent } from "../kernel/browserAgent";
 import { query } from "../state/db";
 import { sendPushNotification } from "../kernel/notify";
 
 /**
- * reddit.ts — Pain sensing from Reddit communities.
- *
- * Uses OAuth2 for authenticated requests (60 req/min instead of 10).
- * Set REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET in .env.
- * Falls back to unauthenticated (slower) if credentials missing.
+ * reddit.ts — Pain sensing from Reddit communities using Agentic Browser.
  */
 
-// Expanded subreddit list — all places where buyers complain
 const SUBREDDITS = [
-  // Original
   "Entrepreneur", "smallbusiness", "freelance", "Contractors", "startups", "SaaS",
-  // Phase 6 additions
   "SideProject", "indiehackers", "webdev", "devops", "msp",
   "legaladvice", "personalfinance", "Bookkeeping", "taxpro",
   "accounting", "projectmanagement", "HireAnEmployee",
 ];
 
-// Broader pain signal queries — semantic variety catches more real pain
 const PAIN_QUERIES = [
   "I wish there was a tool",
   "is there a tool for",
@@ -30,7 +22,6 @@ const PAIN_QUERIES = [
   "no good solution",
   "we pay too much for",
   "does anyone else struggle with",
-  // Phase 6 additions
   "still doing this manually",
   "need to automate",
   "our current process is broken",
@@ -41,68 +32,13 @@ const PAIN_QUERIES = [
   "anyone built something",
 ];
 
-interface RedditPost {
-  id: string;
-  title: string;
-  selftext: string;
-  url: string;
-  score: number;
-  num_comments: number;
+interface MockPost {
+  text: string;
   subreddit: string;
-  author: string;
-  created_utc: number;
 }
 
-// ── OAuth2 token ──────────────────────────────────────────────────────────────
-
-let _oauthToken: string | null = null;
-let _tokenExpiry = 0;
-
-async function getOAuthToken(): Promise<string | null> {
-  const clientId = process.env.REDDIT_CLIENT_ID;
-  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) return null;
-
-  // Reuse cached token
-  if (_oauthToken && Date.now() < _tokenExpiry) return _oauthToken;
-
-  try {
-    const creds = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-    const res = await fetch("https://www.reddit.com/api/v1/access_token", {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${creds}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": process.env.REDDIT_USER_AGENT ?? "organism/1.0",
-      },
-      body: "grant_type=client_credentials",
-    });
-
-    if (!res.ok) {
-      console.log(`  ⚠️  Reddit OAuth failed: ${res.status}. Using unauthenticated fallback.`);
-      return null;
-    }
-
-    const data: any = await res.json();
-    _oauthToken = data.access_token;
-    _tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
-    return _oauthToken;
-  } catch (err: any) {
-    console.log(`  ⚠️  Reddit OAuth error: ${err.message}`);
-    return null;
-  }
-}
-
-function buildUrl(subreddit: string, searchQuery: string, authenticated: boolean): string {
-  const base = authenticated ? "https://oauth.reddit.com" : "https://www.reddit.com";
-  return `${base}/r/${subreddit}/search.json?q=${encodeURIComponent(searchQuery)}&sort=top&t=month&limit=10&restrict_sr=1`;
-}
-
-// ── Pain scoring ──────────────────────────────────────────────────────────────
-
-function scorePain(post: RedditPost): number {
-  const text = ((post.title || "") + " " + (post.selftext || "")).toLowerCase();
+function scorePain(post: MockPost): number {
+  const text = post.text.toLowerCase();
   let pain = 0;
 
   const signals: [string, number][] = [
@@ -121,14 +57,11 @@ function scorePain(post: RedditPost): number {
     if (text.includes(signal)) pain += score;
   }
 
-  pain += Math.min(post.score / 5, 20);
-  pain += Math.min(post.num_comments * 2, 40);
-
   return Math.min(pain, 100);
 }
 
-function scoreWtp(post: RedditPost): number {
-  const text = ((post.title || "") + " " + (post.selftext || "")).toLowerCase();
+function scoreWtp(post: MockPost): number {
+  const text = post.text.toLowerCase();
   let wtp = 0;
 
   if (text.includes("my team")) wtp += 20;
@@ -150,8 +83,8 @@ function scoreWtp(post: RedditPost): number {
   return Math.max(0, Math.min(wtp, 100));
 }
 
-function scoreCompetition(post: RedditPost): number {
-  const text = (post.title + " " + post.selftext).toLowerCase();
+function scoreCompetition(post: MockPost): number {
+  const text = post.text.toLowerCase();
   const tools = [
     "zapier", "make.com", "notion", "airtable", "monday", "asana",
     "hubspot", "salesforce", "clickup", "trello", "jira", "quickbooks",
@@ -161,99 +94,87 @@ function scoreCompetition(post: RedditPost): number {
   return Math.min(tools.filter(t => text.includes(t)).length * 15, 100);
 }
 
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
-
-// ── Main export ───────────────────────────────────────────────────────────────
-
 export async function senseReddit() {
-  const token = await getOAuthToken();
-  const isAuthenticated = !!token;
-  const delay = isAuthenticated ? 600 : 1100; // OAuth: 100 req/min; unauth: 60 req/min
-
-  if (!isAuthenticated) {
-    console.log("  ⚠️  Reddit: No OAuth credentials — using slower unauthenticated API.");
-    console.log("     Set REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET in .env for better results.");
-  }
+  const agent = new BrowserAgent("reddit");
 
   let inserted = 0;
   let errors = 0;
   const highValueFound: string[] = [];
 
-  for (const subreddit of SUBREDDITS) {
-    for (const painQuery of PAIN_QUERIES) {
+  console.log("  ⚠️  Starting Agentic Reddit Sensing...");
+
+  // The Agentic Browser is much heavier than the old API. 
+  // To avoid immediately triggering Reddit's "You're doing that too much" IP ban,
+  // we will only pick 2 random subreddits and 2 random queries per cycle.
+  const selectedSubreddits = [...SUBREDDITS].sort(() => 0.5 - Math.random()).slice(0, 2);
+  const selectedQueries = [...PAIN_QUERIES].sort(() => 0.5 - Math.random()).slice(0, 2);
+
+  for (const subreddit of selectedSubreddits) {
+    for (const painQuery of selectedQueries) {
       try {
-        await sleep(delay);
+        await new Promise(r => setTimeout(r, 5000)); // Pause to respect rate limits
+        const url = `https://www.reddit.com/r/${subreddit}/search/?q=${encodeURIComponent(painQuery)}&restrict_sr=1&sort=new`;
+        const goal = `Scroll through the search results. Find people complaining or expressing pain points about manual work, needing software tools, or asking for recommendations. Extract the full text of any relevant post or comment you find.`;
 
-        const url = buildUrl(subreddit, painQuery, isAuthenticated);
-        const headers: Record<string, string> = {
-          "User-Agent": process.env.REDDIT_USER_AGENT ?? "organism/1.0",
-        };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
+        const extractedText = await agent.runTask(url, goal, 4);
 
-        const res = await fetch(url, { headers });
-        if (!res.ok) { errors++; continue; }
+        if (!extractedText || extractedText.trim().length === 0) {
+          continue; // LLM found nothing on this run
+        }
 
-        const data: any = await res.json();
-        const posts: RedditPost[] = (data?.data?.children ?? []).map((c: any) => c.data);
+        // The LLM returns a blob of extracted text. Split by newlines.
+        const lines = extractedText.split('\n').filter((l: string) => l.length > 20);
 
-        for (const post of posts) {
-          if (!post.title || post.title.length < 10) continue;
+        for (const text of lines) {
+          const mockPost: MockPost = { text, subreddit };
 
-          const painScore = scorePain(post);
-          const wtpScore = scoreWtp(post);
-          const compScore = scoreCompetition(post);
+          const painScore = scorePain(mockPost);
+          const wtpScore = scoreWtp(mockPost);
+          const compScore = scoreCompetition(mockPost);
           const viability = Math.max(0, Math.min(100, painScore + wtpScore - compScore));
 
-          const rawText = [
-            `r/${post.subreddit} | Score: ${post.score} | Comments: ${post.num_comments}`,
-            `Title: ${post.title}`,
-            post.selftext?.slice(0, 2500) ?? "",
-          ].join("\n").slice(0, 3000);
-
-          const evidenceUrl = `https://reddit.com${post.url ?? `/r/${subreddit}`}`;
+          const evidenceUrl = url; // Linking to the search page since we don't have the exact post URL
 
           const result = await query(
             `INSERT INTO opportunities
-               (source, title, evidence_url, pain_score, wtp_score, competition_score, raw_text, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'new')
-             ON CONFLICT (evidence_url) DO UPDATE
-               SET pain_score       = GREATEST(opportunities.pain_score, $4),
-                   wtp_score        = GREATEST(opportunities.wtp_score, $5),
-                   seen_count       = COALESCE(opportunities.seen_count, 1) + 1
-             RETURNING id, (xmax = 0) AS is_new`,
-            [`reddit/r/${subreddit}`, post.title.slice(0, 500), evidenceUrl, painScore, wtpScore, compScore, rawText]
+                   (source, title, evidence_url, pain_score, wtp_score, competition_score, raw_text, status)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'new')
+                 ON CONFLICT (evidence_url) DO UPDATE
+                   SET pain_score       = GREATEST(opportunities.pain_score, $4),
+                       wtp_score        = GREATEST(opportunities.wtp_score, $5),
+                       seen_count       = COALESCE(opportunities.seen_count, 1) + 1
+                 RETURNING id, (xmax = 0) AS is_new`,
+            [`reddit-agent/r/${subreddit}`, text.slice(0, 200), evidenceUrl, painScore, wtpScore, compScore, text.slice(0, 3000)]
           );
 
           const isNew = result.rows[0]?.is_new;
           if (isNew) inserted++;
 
-          // Track high-value new signals for proactive notification
           if (isNew && viability >= 60) {
-            highValueFound.push(`[v:${viability}] ${post.title.slice(0, 70)}`);
+            highValueFound.push(`[v:${viability}] ${text.slice(0, 70)}`);
           }
         }
-      } catch {
+      } catch (err: any) {
+        console.error(`  ❌ Reddit Agent Error:`, err.message);
         errors++;
         continue;
       }
     }
   }
 
+  await agent.close();
+
   await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
-    ["reddit_sense", { subreddits: SUBREDDITS.length, queries: PAIN_QUERIES.length, inserted, errors, authenticated: isAuthenticated }]
+    ["reddit_sense_agent", { subreddits: SUBREDDITS.length, queries: PAIN_QUERIES.length, inserted, errors }]
   );
 
-  // Proactive notification if high-value signals found
   if (highValueFound.length > 0) {
-    const msg = `🔭 *${highValueFound.length} high-value Reddit idea${highValueFound.length > 1 ? "s" : ""} found*\n\n`
+    const msg = `🔭 *${highValueFound.length} high-value agentic Reddit signal${highValueFound.length > 1 ? "s" : ""} found*\n\n`
       + highValueFound.slice(0, 5).map(s => `• ${s}`).join("\n")
       + `\n\nReview them in Mission Control.`;
 
-    await sendPushNotification(
-      `High-Value Reddit Signals Detected`,
-      msg
-    );
+    await sendPushNotification(`High-Value Reddit Signals Detected`, msg);
   }
 
-  console.log(`  Reddit: ${inserted} new, ${errors} errors (${isAuthenticated ? "OAuth" : "unauth"})`);
+  console.log(`  Reddit (Agent): ${inserted} new, ${errors} errors`);
 }

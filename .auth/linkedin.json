@@ -1,0 +1,215 @@
+{
+  "cookies": [
+    {
+      "name": "lang",
+      "value": "v=2&lang=en-us",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "JSESSIONID",
+      "value": "\"ajax:2019870301755609544\"",
+      "domain": ".www.linkedin.com",
+      "path": "/",
+      "expires": 1780012220.148298,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "bcookie",
+      "value": "\"v=2&e9e57f90-0b87-4f6d-876b-1e60ef5ba182\"",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1803772222.50921,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "bscookie",
+      "value": "\"v=1&2026022723500947a351a8-c8f8-4576-8a49-e34062746436AQGhn9TsPJed6D_pOoffyDk9cpDqjaop\"",
+      "domain": ".www.linkedin.com",
+      "path": "/",
+      "expires": 1803772222.509655,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "__cf_bm",
+      "value": "vw1.VOpOXzrPhFZ1HBGREMW70I_uuojv1Qzn9YbAQAg-1772236209-1.0.1.1-34lWjcWkRdTuAx_qCW2Wfa4OBaI7N8JOpru9YWWbDSAHjF1T1ZfGCHJFE0xhuENlrRjIx6gcJEgQItYouFLcyScWnYH02gjanRkwzHIAfpI",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1772238009.698329,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "demdex",
+      "value": "04546626174042278054013127784187637268",
+      "domain": ".demdex.net",
+      "path": "/",
+      "expires": 1787788219.738432,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "AMCVS_14215E3D5995C57C0A495C55%40AdobeOrg",
+      "value": "1",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "AMCV_14215E3D5995C57C0A495C55%40AdobeOrg",
+      "value": "-637568504%7CMCIDTS%7C20512%7CMCMID%7C04684865174716874463998722896115785183%7CMCAAMLH-1772841011%7C7%7CMCAAMB-1772841011%7C6G1ynYcLPuiQxYZrsz_pkqfLG9yMXBpb2zX5dvJdYQJzPXImdj0y%7CMCOPTOUT-1772243411s%7CNONE%7CvVersion%7C5.1.1",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1787788211,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "aam_uuid",
+      "value": "04546626174042278054013127784187637268",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1774828219,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "dextp",
+      "value": "771-1-1772236211512|1957-1-1772236211614",
+      "domain": ".demdex.net",
+      "path": "/",
+      "expires": 1787788211,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "IDE",
+      "value": "AHWqTUnF1OVMoNVjSPMUI6NPBBG_TRav8P2m_VzYXueQfSnGmv9k2GiRcIDoviuwOzo",
+      "domain": ".doubleclick.net",
+      "path": "/",
+      "expires": 1806796211.654736,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "MUID",
+      "value": "07298D0007D6609B06009A0D06686138",
+      "domain": ".bing.com",
+      "path": "/",
+      "expires": 1805932211.70742,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "MR",
+      "value": "0",
+      "domain": ".c.bing.com",
+      "path": "/",
+      "expires": 1772841011.707476,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "dpm",
+      "value": "04546626174042278054013127784187637268",
+      "domain": ".dpm.demdex.net",
+      "path": "/",
+      "expires": 1787788211.814561,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_gcl_au",
+      "value": "1.1.1875972432.1772236220",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1780012219,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "li_rm",
+      "value": "AQGADJ2sBnBEEQAAAZyhgqbQpB4sWyUh_BYCJ4ev4qBD3OXHFO1nnidV30Ut3rbt1h_nDf-qVz-1LYv1W4kaB23v3ow_wY01QhmZl2aOVauakfNJU8DEgYlEztnNsDrqWBbsuI7BGiMb4RAJce-TF2-rCDCY8KNqYWxb--DN5CISuSJLtLCZVPxCe8mX6u59WI-5mgABeewFWMkMpF5Nowxx7hluRv5hzqWNP-NDcdQaY_i_77OxhU6iHLCEO7Vms9mBVTNAuETDmUHpyJNze2wajqYDPfXJSKFE0IT2CPT4k4nYXNYDkXFYupjWADvvl7cEZgLvPmZfdCYLNhu6Hw",
+      "domain": ".www.linkedin.com",
+      "path": "/",
+      "expires": 1803772220.148181,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "liap",
+      "value": "true",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1780012220.148255,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "li_at",
+      "value": "AQEDAQvxlegBu0w0AAABnKGCppsAAAGcxY8qm1YAwY8UHDtPRj9cFtkbGxy3uiXQiYH_cMhV29hWfxpgVQeEbc435a9Bbn4kp9OZWoj4IFv2sKSFCMxWNYfH24B4mi-0LRGDXAQHrDg-bVm5kQvp_rA_",
+      "domain": ".www.linkedin.com",
+      "path": "/",
+      "expires": 1803772220.148275,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "sdui_ver",
+      "value": "sdui-flagship:0.1.29184+SduiFlagship0",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1803772222.509069,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "lidc",
+      "value": "\"b=TB28:s=T:r=T:a=T:p=T:g=4928:u=1968:x=1:i=1772236220:t=1772311564:v=2:sig=AQFlN6A-QwhR12WFypq_dYVCKrnM0L5r\"",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1772311564.509875,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://www.linkedin.com",
+      "localStorage": [
+        {
+          "name": "_gcl_ls",
+          "value": "{\"schema\":\"gcl\",\"version\":1,\"gcl_ctr\":{\"value\":{\"value\":0,\"timeouts\":0,\"errors\":0,\"creationTimeMs\":1772236219922},\"expires\":1780012219922}}"
+        }
+      ]
+    }
+  ]
+}

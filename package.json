@@ -21,11 +21,17 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@langchain/community": "^1.1.20",
+    "@langchain/core": "^1.1.29",
+    "@langchain/ollama": "^1.2.5",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "node-fetch": "^3.3.2",
     "pg": "^8.18.0",
+    "playwright": "^1.58.2",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "resend": "^6.9.2"
   },
   "devDependencies": {

@@ -9,45 +9,30 @@ import { sendPushNotification } from "../kernel/notify";
  * they are telling you exactly what to build to steal them.
  */
 
-// Simulated review data. In production, this uses Apify or ScrapingBee.
-const MOCK_G2_REVIEWS = [
-    {
-        id: "g2_1",
-        product: "Salesforce",
-        stars: 1,
-        title: "Way too complex just to track simple leads",
-        description: "We are a 5-person agency paying $150/user/month and we only use 10% of the features. It takes 15 clicks just to update a lead status. I just want a fast, keyboard-first CRM that doesn't require a consultant to set up.",
-        url: "https://g2.com/reviews/salesforce/123",
-        cost_signal: 150
-    },
-    {
-        id: "g2_2",
-        product: "Deel",
-        stars: 2,
-        title: "Good for payroll, terrible for contractor invoicing",
-        description: "Their payroll works, but every month our contractors complain about the invoicing flow. They have to manually generate PDFs and upload them. Why can't they just submit hours and have it auto-generate the invoice? Huge pain point for a $50/contractor fee.",
-        url: "https://g2.com/reviews/deel/456",
-        cost_signal: 50
-    },
-    {
-        id: "g2_3",
-        product: "Jira",
-        stars: 1,
-        title: "Slow, clunky, and hated by my dev team",
-        description: "It takes 5 seconds to load a ticket. The search is completely broken. We are actively looking for a lightweight, markdown-native alternative that just works fast, but everything else lacks basic GitHub integrations.",
-        url: "https://g2.com/reviews/jira/789",
-        cost_signal: 20
-    }
+import { BrowserAgent } from "../kernel/browserAgent";
+
+/**
+ * g2.ts — Pain sensing from negative B2B software reviews using Agentic Browser.
+ */
+
+// We will target some large, commonly frustrating B2B categories/products
+const TARGET_PRODUCTS = [
+    { name: "Salesforce", url: "https://www.g2.com/products/salesforce-sales-cloud/reviews?filters%5Bstar_rating%5D%5B%5D=1&filters%5Bstar_rating%5D%5B%5D=2" },
+    { name: "Jira", url: "https://www.g2.com/products/jira/reviews?filters%5Bstar_rating%5D%5B%5D=1&filters%5Bstar_rating%5D%5B%5D=2" },
+    { name: "Deel", url: "https://www.g2.com/products/deel/reviews?filters%5Bstar_rating%5D%5B%5D=1&filters%5Bstar_rating%5D%5B%5D=2" },
+    { name: "HubSpot", url: "https://www.g2.com/products/hubspot-sales-hub/reviews?filters%5Bstar_rating%5D%5B%5D=1&filters%5Bstar_rating%5D%5B%5D=2" }
 ];
+
+interface MockReview {
+    text: string;
+    product: string;
+}
 
 // ── Pain and WTP scoring ──────────────────────────────────────────────────────
 
-function scorePain(review: typeof MOCK_G2_REVIEWS[0]): number {
-    const text = (review.title + " " + review.description).toLowerCase();
+function scorePain(review: MockReview): number {
+    const text = review.text.toLowerCase();
     let pain = 40; // High baseline because they took time to write a bad review
-
-    if (review.stars === 1) pain += 20;
-    if (review.stars === 2) pain += 10;
 
     const signals: [string, number][] = [
         ["terrible", 15], ["hate", 15], ["complex", 10], ["slow", 15],
@@ -62,17 +47,12 @@ function scorePain(review: typeof MOCK_G2_REVIEWS[0]): number {
     return Math.min(pain, 100);
 }
 
-function scoreWtp(review: typeof MOCK_G2_REVIEWS[0]): number {
+function scoreWtp(review: MockReview): number {
     let wtp = 30; // Baseline WTP since they are already a paying user of *something*
 
-    // If they mention the cost, they have budget
-    if (review.cost_signal >= 100) wtp += 60;
-    else if (review.cost_signal >= 50) wtp += 40;
-    else if (review.cost_signal > 0) wtp += 20;
-
-    const text = review.description.toLowerCase();
-    if (text.includes("paying") || text.includes("fee") || text.includes("cost")) {
-        wtp += 15;
+    const text = review.text.toLowerCase();
+    if (text.includes("paying") || text.includes("fee") || text.includes("cost") || text.includes("price") || text.includes("expensive")) {
+        wtp += 30;
     }
 
     return Math.min(wtp, 100);
@@ -81,64 +61,80 @@ function scoreWtp(review: typeof MOCK_G2_REVIEWS[0]): number {
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function senseG2() {
+    const agent = new BrowserAgent(); // Public reviews, no session needed
+
     let inserted = 0;
     let errors = 0;
     const highValueFound: string[] = [];
 
-    // In production: trigger Apify task here and wait for results
-    // const reviews = await runApifyG2Scraper();
-    const reviews = MOCK_G2_REVIEWS;
+    console.log("  📊 Starting Agentic G2/Software Review Sensing...");
 
-    for (const review of reviews) {
-        try {
-            const pain = scorePain(review);
-            const wtp = scoreWtp(review);
+    // Pick 1 random product per cycle to avoid heavy bot detection
+    const selectedProduct = TARGET_PRODUCTS[Math.floor(Math.random() * TARGET_PRODUCTS.length)];
 
-            if (pain < 50) continue; // Only process highly agitated users
+    try {
+        await new Promise(r => setTimeout(r, 4000));
 
-            // Check if we already sensed this review
-            const existing = await query(`SELECT id FROM opportunity_current_state WHERE evidence_url = $1`, [review.url]);
-            if (existing.rows.length > 0) continue;
+        const goal = `Scroll through the reviews. These are filtered to 1 and 2 star reviews. Extract the full text of any review where the user complains about complexity, slow speeds, manual work, or high costs. Extract the title and the full review body text.`;
 
-            const title = `G2 Complaint: ${review.product} alternative`;
-            const rawText = `Rating: ${review.stars}/5\\nTitle: ${review.title}\\n\\n${review.description}`;
+        const extractedText = await agent.runTask(selectedProduct.url, goal, 3);
 
-            // Push to signal queue for async processing
-            await query(
-                `INSERT INTO signal_queue (source, raw_payload) VALUES ($1, $2)`,
-                ["g2_reviews", JSON.stringify({
-                    title: title,
-                    evidence_url: review.url,
-                    raw_text: rawText,
-                    pain_score: pain,
-                    wtp_score: wtp,
-                    competition_score: 30 // Higher competition since attacking incumbents
-                })]
-            );
+        if (extractedText && extractedText.trim().length > 0) {
+            const lines = extractedText.split('\n\n').filter((l: string) => l.length > 30);
 
-            inserted++;
+            for (const text of lines) {
+                const review: MockReview = { text, product: selectedProduct.name };
 
-            // Calculate a pseudo-viability to see if it's worth alerting
-            const viability = Math.min(100, Math.max(0, pain + wtp - 30));
+                const pain = scorePain(review);
+                const wtp = scoreWtp(review);
 
-            if (viability > 75) {
-                highValueFound.push(`[v:${viability}] ${title}`);
+                if (pain < 50) continue; // Only process highly agitated users
+
+                const title = `G2 Complaint: ${selectedProduct.name} alternative`;
+
+                // Push to signal queue for async processing
+                await query(
+                    `INSERT INTO signal_queue (source, raw_payload) VALUES ($1, $2)`,
+                    ["g2_reviews_agent", JSON.stringify({
+                        title: title,
+                        evidence_url: selectedProduct.url,
+                        raw_text: text,
+                        pain_score: pain,
+                        wtp_score: wtp,
+                        competition_score: 30 // Higher competition since attacking incumbents
+                    })]
+                );
+
+                inserted++;
+
+                const viability = Math.min(100, Math.max(0, pain + wtp - 30));
+                if (viability > 75) {
+                    highValueFound.push(`[v:${viability}] ${title}`);
+                }
             }
-
-        } catch (err: any) {
-            console.error(`[G2 Sensor] Error processing review ${review.id}:`, err.message);
-            errors++;
         }
+    } catch (err: any) {
+        console.error(`  ❌ G2 Agent Error for ${selectedProduct.name}:`, err.message);
+        errors++;
     }
 
+    await agent.close();
+
+    await query(
+        `INSERT INTO events (type, payload) VALUES ($1, $2)`,
+        ["g2_sense_agent", { product: selectedProduct.name, inserted, errors }]
+    );
+
     if (inserted > 0) {
-        console.log(`\n  ✅ Sensed ${inserted} high-intent G2 complaints (Errors: ${errors}) pushed to queue.`);
+        console.log(`  ✅ Sensed ${inserted} high-intent G2 complaints (Errors: ${errors}) pushed to queue.`);
 
         if (highValueFound.length > 0) {
             await sendPushNotification(
                 "Aggressive G2 Disruptions Identified",
-                `The Organism found ${highValueFound.length} high-paying customers ready to churn from incumbents:\\n\\n${highValueFound.join("\\n")}`
+                `The Agentic scraper found ${highValueFound.length} high-paying customers ready to churn from incumbents:\\n\\n${highValueFound.join("\\n")}`
             );
         }
+    } else {
+        console.log(`  G2 (Agent): 0 new complaints found this cycle.`);
     }
 }
