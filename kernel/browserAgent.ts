@@ -3,8 +3,8 @@ import type { Browser, BrowserContext, Page } from "playwright";
 import stealthPlugin from "puppeteer-extra-plugin-stealth";
 
 chromium.use(stealthPlugin());
-import { ChatOllama } from "@langchain/ollama";
-import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { callBrain } from "../cognition/llm";
+import { getVisitedLinks, markVisited } from "./memory";
 
 import fs from "fs";
 import path from "path";
@@ -31,25 +31,18 @@ let sharedBrowser: Browser | null = null;
 export class BrowserAgent {
     private context: BrowserContext | null = null;
     private page: Page | null = null;
-    private llm: ChatOllama;
     private authFile: string | null = null;
 
     constructor(sessionName?: string) {
         if (sessionName) {
             this.authFile = path.join(__dirname, `../.auth/${sessionName}.json`);
         }
-
-        this.llm = new ChatOllama({
-            baseUrl: "http://localhost:11434", // Local Ollama server
-            model: process.env.OLLAMA_MODEL || "deepseek-v3.1:671b-cloud",
-            temperature: 0.1, // Low temp for structured robotic tasks
-            format: "json",
-        });
     }
 
     async init() {
         if (!sharedBrowser) {
-            sharedBrowser = await chromium.launch({ headless: true });
+            const isHeadless = process.env.SHOW_BROWSER === "true" ? false : true;
+            sharedBrowser = await chromium.launch({ headless: isHeadless });
         }
 
         const contextOptions: any = {
@@ -81,10 +74,10 @@ export class BrowserAgent {
      * Injects JS into the page to extract all visible, interactive, or text-heavy elements,
      * assigns them a temporary numeric ID, and returns a simplified string for the LLM.
      */
-    private async getPageSnapshot(): Promise<{ promptText: string; elementMap: Record<number, string> }> {
+    private async getPageSnapshot(visitedList: string[] = []): Promise<{ promptText: string; elementMap: Record<number, string> }> {
         if (!this.page) throw new Error("Browser not initialized");
 
-        return await this.page.evaluate(() => {
+        return await this.page.evaluate((visited) => {
             // Small JS function executed inside the browser to map the DOM
             const interactiveFilters = "a, button, input, textarea, select, [role='button'], h1, h2, h3, p, span, div.tweet-text, article";
             const elements = Array.from(document.querySelectorAll(interactiveFilters));
@@ -101,6 +94,10 @@ export class BrowserAgent {
                 const text = (el as HTMLElement).innerText?.trim() || (el as HTMLInputElement).placeholder || "";
                 if (!text && el.tagName !== "INPUT") continue;
 
+                // VISUAL MEMORY: Ignore elements that exactly match text we already extracted across any session
+                // Also ignore links we have already clicked or visited
+                if (visited.some(v => v === text || v === (el as HTMLAnchorElement).href)) continue;
+
                 const tag = el.tagName.toLowerCase();
 
                 // Tag with ID for Playwright to click later
@@ -115,7 +112,7 @@ export class BrowserAgent {
                 promptText: promptLines.join("\n"),
                 elementMap
             };
-        });
+        }, visitedList);
     }
 
     /**
@@ -128,19 +125,29 @@ export class BrowserAgent {
         await this.page!.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
 
         let finalExtractedData = "";
+        let previousActions: string[] = [];
+        const visitedUrls = await getVisitedLinks(500);
 
         for (let step = 1; step <= maxSteps; step++) {
             console.log(`  Step ${step}: Reading DOM...`);
             await this.page!.waitForTimeout(2000); // Let JS framework load
 
-            const snapshot = await this.getPageSnapshot();
-            console.log(`  Step ${step}: DOM mapped. Found ${Object.keys(snapshot.elementMap).length} interactive elements. Sending to LLM...`);
+            const snapshot = await this.getPageSnapshot(visitedUrls);
+            const screenshotBuffer = await this.page!.screenshot({ type: "jpeg", quality: 50, scale: "css" });
+            const imageBase64 = screenshotBuffer.toString("base64");
+
+            console.log(`  Step ${step}: DOM mapped. Found ${Object.keys(snapshot.elementMap).length} interactive elements. Capturing screenshot for Vision LLM...`);
 
             const prompt = `
-You are an autonomous browser agent. Your goal is: "${goal}"
+You are an expert autonomous web scraper.
+Your goal is: "${goal}"
 
-CURRENT VISIBLE ELEMENTS:
+CURRENT VISIBLE DOM ELEMENTS:
 ${snapshot.promptText}
+
+PAST ACTIONS YOU ALREADY TRIED (Avoid repeating mistakes):
+${previousActions.length > 0 ? previousActions.join("\n") : "None yet."}
+
 
 Decide your next action. You can only do one of the following:
 1. "click" an element by its ID number.
@@ -149,7 +156,7 @@ Decide your next action. You can only do one of the following:
 4. "extract" data. Output what you found in the "text" field, and keep exploring or finish.
 5. "done" if the goal is fully achieved.
 
-Respond ONLY with valid JSON in this format:
+Respond ONLY with strictly valid JSON in this exact format, with no markdown formatting:
 {
   "action": "click|type|scroll_down|extract|done",
   "elementId": <number or null>,
@@ -159,18 +166,17 @@ Respond ONLY with valid JSON in this format:
       `;
 
             try {
-                console.log(`  Step ${step}: Awaiting LLM decision from ${this.llm.model}...`);
-                const response = await this.llm.invoke([
-                    new SystemMessage("You are an expert autonomous web scraper. Always respond in JSON."),
-                    new HumanMessage(prompt)
-                ]);
+                // Use the core Organism brain with Vision support
+                const rawContent = await callBrain(prompt, "Browser Agent Vision Step", false, "chat", imageBase64);
 
-                const rawContent = response.content as string;
-                // Clean markdown block if present
+                // Clean markdown block if the model included it despite instructions
                 const jsonStr = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
                 const call: BrowserAction = JSON.parse(jsonStr);
 
                 console.log(`  🧠 Engine: ${call.action} [${call.elementId || ''}] — ${call.reasoning}`);
+
+                // Save to memory
+                previousActions.push(`[Step ${step}] Action: ${call.action}, Element: ${call.elementId || 'none'}, Text: '${call.text || ''}'. Reasoning: ${call.reasoning}`);
 
                 if (call.action === "done") {
                     return finalExtractedData;
@@ -179,6 +185,10 @@ Respond ONLY with valid JSON in this format:
                 if (call.action === "extract" && call.text) {
                     finalExtractedData += "\n" + call.text;
                     console.log(`  📄 Extracted: ${call.text.slice(0, 50)}...`);
+                    try {
+                        await markVisited(call.text);
+                        visitedUrls.push(call.text);
+                    } catch { }
                 }
 
                 if (call.action === "scroll_down") {
@@ -187,7 +197,19 @@ Respond ONLY with valid JSON in this format:
 
                 if (call.action === "click" && call.elementId) {
                     const selector = snapshot.elementMap[call.elementId];
-                    if (selector) await this.page!.click(selector, { force: true });
+                    if (selector) {
+                        try {
+                            const href = await this.page!.evaluate((sel) => {
+                                const el = document.querySelector(sel);
+                                return el?.tagName === "A" ? (el as HTMLAnchorElement).href : null;
+                            }, selector);
+                            if (href) {
+                                await markVisited(href);
+                                visitedUrls.push(href);
+                            }
+                        } catch { }
+                        await this.page!.click(selector, { force: true });
+                    }
                 }
 
                 if (call.action === "type" && call.elementId && call.text) {

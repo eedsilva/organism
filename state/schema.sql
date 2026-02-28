@@ -157,7 +157,15 @@ CREATE TABLE IF NOT EXISTS proposals (
 );
 
 
--- 1️⃣1️⃣ Replication log (colony spawning)
+-- 1️⃣1️⃣ Memory (Browser Agent visited links)
+CREATE TABLE IF NOT EXISTS visited_links (
+  id SERIAL PRIMARY KEY,
+  url TEXT UNIQUE NOT NULL,
+  source TEXT,
+  visited_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 1️⃣2️⃣ Replication log (colony spawning)
 CREATE TABLE IF NOT EXISTS replication_log (
   id SERIAL PRIMARY KEY,
   child_niche TEXT,

@@ -48,7 +48,7 @@ const CLOUD_FALLBACK_MODELS: Record<string, string[]> = {
   code: ["gpt-4o", "gpt-4o-mini"],
   planning: ["gpt-4o", "gpt-4o-mini"],
   reflect: ["gpt-4o", "gpt-4o-mini"],
-  chat: ["gpt-4o-mini", "gpt-4o"],
+  chat: ["gpt-4o-mini"],
   scoring: ["gpt-4o-mini", "gpt-4o"],
 };
 
@@ -59,11 +59,16 @@ export type TaskType = "code" | "planning" | "reflect" | "chat" | "scoring";
 
 // ── Local brain (Ollama) ──────────────────────────────────────────────────────
 
-async function callOllama(prompt: string, model: string): Promise<string> {
+async function callOllama(prompt: string, model: string, imageBase64?: string): Promise<string> {
+  const payload: any = { model, prompt, stream: false };
+  if (imageBase64) {
+    payload.images = [imageBase64];
+  }
+
   const response = await fetch(OLLAMA_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, prompt, stream: false }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -74,9 +79,14 @@ async function callOllama(prompt: string, model: string): Promise<string> {
   return data.response;
 }
 
-async function callOllamaWithFallback(prompt: string, taskType: TaskType): Promise<string> {
-  const preferred = OLLAMA_TASK_MODELS[taskType] ?? OLLAMA_DEFAULT;
-  const fallback = OLLAMA_DEFAULT;
+async function callOllamaWithFallback(prompt: string, taskType: TaskType, imageBase64?: string): Promise<string> {
+  // If doing a vision task locally, we MUST use a vision model. Llama3.2-vision is the local default.
+  const preferred = imageBase64
+    ? (process.env.OLLAMA_VISION_MODEL ?? "llama3.2-vision")
+    : (OLLAMA_TASK_MODELS[taskType] ?? OLLAMA_DEFAULT);
+
+  let fallback = OLLAMA_DEFAULT;
+  if (imageBase64) fallback = preferred; // Don't fallback to a text-only model if we have an image
 
   // Try task-specific model first, then default
   const modelsToTry = preferred !== fallback
@@ -86,7 +96,7 @@ async function callOllamaWithFallback(prompt: string, taskType: TaskType): Promi
   for (const model of modelsToTry) {
     try {
       console.log(`  🦙 Ollama [${model}]`);
-      return await callOllama(prompt, model);
+      return await callOllama(prompt, model, imageBase64);
     } catch (err: any) {
       if (model === modelsToTry[modelsToTry.length - 1]) throw err;
       console.log(`  ⚠️  ${model} unavailable, trying ${modelsToTry[modelsToTry.length - 1]}`);
@@ -98,9 +108,22 @@ async function callOllamaWithFallback(prompt: string, taskType: TaskType): Promi
 
 // ── Cloud brain (OpenAI) ──────────────────────────────────────────────────────
 
-async function callOpenAI(prompt: string, model: string): Promise<{ text: string; cost: number }> {
+async function callOpenAI(prompt: string, model: string, imageBase64?: string): Promise<{ text: string; cost: number }> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY not set");
+
+  const messages: any[] = [];
+  if (imageBase64) {
+    messages.push({
+      role: "user",
+      content: [
+        { type: "text", text: prompt },
+        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: "low" } }
+      ]
+    });
+  } else {
+    messages.push({ role: "user", content: prompt });
+  }
 
   const response = await fetch(OPENAI_URL, {
     method: "POST",
@@ -110,7 +133,7 @@ async function callOpenAI(prompt: string, model: string): Promise<{ text: string
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: "user", content: prompt }],
+      messages,
       temperature: 0.3,
     }),
   });
@@ -146,14 +169,15 @@ async function callOpenAI(prompt: string, model: string): Promise<{ text: string
 
 async function callCloudWithFallback(
   prompt: string,
-  taskType: TaskType
+  taskType: TaskType,
+  imageBase64?: string
 ): Promise<string> {
   const models = CLOUD_FALLBACK_MODELS[taskType] ?? ["gpt-4o"];
 
   for (const model of models) {
     try {
       console.log(`  ☁️  Cloud [${model}]`);
-      const { text } = await callOpenAI(prompt, model);
+      const { text } = await callOpenAI(prompt, model, imageBase64);
       return text;
     } catch (err: any) {
       if (model === models[models.length - 1]) throw err;
@@ -288,9 +312,10 @@ async function requestCloudApproval(reason: string): Promise<boolean> {
  */
 export async function callLocalBrain(
   prompt: string,
-  taskType: TaskType = "planning"
+  taskType: TaskType = "planning",
+  imageBase64?: string
 ): Promise<string> {
-  return callOllamaWithFallback(prompt, taskType);
+  return callOllamaWithFallback(prompt, taskType, imageBase64);
 }
 
 /**
@@ -308,10 +333,11 @@ export async function callBrain(
   prompt: string,
   reason: string = "general task",
   forceLocal: boolean = false,
-  taskType: TaskType = "planning"
+  taskType: TaskType = "planning",
+  imageBase64?: string
 ): Promise<string> {
   if (forceLocal || !process.env.OPENAI_API_KEY) {
-    return callOllamaWithFallback(prompt, taskType);
+    return callOllamaWithFallback(prompt, taskType, imageBase64);
   }
 
   const [todaySpend, dailyBudget] = await Promise.all([
@@ -321,10 +347,10 @@ export async function callBrain(
 
   if (todaySpend < dailyBudget) {
     try {
-      return await callCloudWithFallback(prompt, taskType);
+      return await callCloudWithFallback(prompt, taskType, imageBase64);
     } catch (err: any) {
       console.log(`  ⚠️  Cloud failed (${err.message}), using Ollama.`);
-      return callOllamaWithFallback(prompt, taskType);
+      return callOllamaWithFallback(prompt, taskType, imageBase64);
     }
   }
 
@@ -335,13 +361,13 @@ export async function callBrain(
 
   if (approved) {
     try {
-      return await callCloudWithFallback(prompt, taskType);
+      return await callCloudWithFallback(prompt, taskType, imageBase64);
     } catch (err: any) {
       console.log(`  ⚠️  Cloud failed after approval (${err.message}), using Ollama.`);
     }
   }
 
-  return callOllamaWithFallback(prompt, taskType);
+  return callOllamaWithFallback(prompt, taskType, imageBase64);
 }
 
 // ── Approval helpers (called by CLI and Telegram) ────────────────────────────
