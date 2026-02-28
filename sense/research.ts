@@ -4,6 +4,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { callBrain } from "../cognition/llm";
 import { getTrendingB2BNiche } from "./trends";
+import { query } from "../state/db";
 
 chromium.use(stealthPlugin() as any);
 
@@ -50,6 +51,32 @@ async function runWithChatGPT(authFile: string, prompt: string): Promise<string[
     try {
         await page.goto("https://chatgpt.com/", { waitUntil: "domcontentloaded", timeout: 20000 });
         await page.waitForTimeout(3000);
+
+        // Check if we're on the login page (session expired)
+        const isLoggedIn = await page.evaluate(() => {
+            return (
+                !!document.querySelector("#prompt-textarea") ||
+                !!document.querySelector("[data-testid='send-button']")
+            );
+        });
+
+        if (!isLoggedIn) {
+            await page.close();
+            await context.close();
+            await browser.close();
+            await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`, [
+                "chatgpt_session_expired",
+                {
+                    auth_file: authFile,
+                    action_required: "Run: npx ts-node scripts/authChatGPT.ts",
+                },
+            ]);
+            await query(`SELECT pg_notify('organism_events', $1)`, [
+                JSON.stringify({ type: "session_expired", payload: { service: "chatgpt" } }),
+            ]);
+            console.log("⚠️  ChatGPT session expired. Run: npx ts-node scripts/authChatGPT.ts");
+            return [];
+        }
 
         // Target the contenteditable prompt editor directly
         const inputSelector = "#prompt-textarea";

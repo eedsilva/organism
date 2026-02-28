@@ -409,6 +409,7 @@ UPDATE opportunities SET status = 'shipped' WHERE id = ${opportunity.id};
 }
 
 // ── Zombie cleanup — auto-kills stale building opportunities ─────────────────
+// Uses event-sourced transitionOpportunity only; never direct UPDATE on opportunities.status
 
 export async function killZombies() {
   const zombieDaysResult = await query(
@@ -416,22 +417,20 @@ export async function killZombies() {
   );
   const days = Number(zombieDaysResult.rows[0]?.value ?? 5);
 
+  // Find zombies through the VIEW (event-sourced status), not the base table
   const zombies = await query(
-    `UPDATE opportunities
-     SET status = 'killed'
+    `SELECT id, title FROM opportunity_current_state
      WHERE status = 'building'
-       AND created_at < NOW() - INTERVAL '${days} days'
-     RETURNING id, title`
+       AND created_at < NOW() - INTERVAL '${days} days'`
   );
 
   for (const z of zombies.rows) {
-    // Note: since this is an UPDATE Opportunities query, I should use transitionOpportunity, but I can fix that as part of this edit.
-    await transitionOpportunity(z.id, 'killed', { reason: 'zombie > 5 days' });
-
-    await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
-      ["zombie_killed", { opportunity_id: z.id, title: z.title, after_days: days }]
-    );
-    console.log(`  🪦 ZOMBIE KILLED: "${z.title?.slice(0, 55)}" (>${days} days, no revenue)`);
+    await transitionOpportunity(z.id, "killed", { reason: `zombie > ${days} days` });
+    await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`, [
+      "zombie_killed",
+      { opportunity_id: z.id, title: z.title, after_days: days },
+    ]);
+    console.log(`  🪦 ZOMBIE KILLED: "${z.title?.slice(0, 55)}" (>${days} days)`);
   }
 
   if (zombies.rows.length === 0) {

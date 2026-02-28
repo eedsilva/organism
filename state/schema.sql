@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS opportunities (
     LEAST(100, GREATEST(0, pain_score + wtp_score - competition_score))
   ) STORED,
   plan TEXT,
+  -- status: Legacy column. Current state comes from opportunity_events. Preserved only for
+  -- opportunity_current_state view fallback. Never mutate directly — use transitionOpportunity().
   status TEXT DEFAULT 'new',
   created_at TIMESTAMP DEFAULT NOW()
 );

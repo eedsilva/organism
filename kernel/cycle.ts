@@ -1,7 +1,8 @@
 import { query } from "../state/db";
 import fs from "fs";
 import fetch from "node-fetch";
-import { getBudgetStatus } from "./budgets";
+import { getTodayCloudSpend, getCloudBudget } from "../cognition/llm";
+import { processSignalQueue } from "./workers/signal";
 import { senseHackerNews } from "../sense/hn";
 import { senseReddit } from "../sense/reddit";
 import { senseAppReviews } from "../sense/reviews";
@@ -14,6 +15,24 @@ import { runDigest } from "./digest";
 import { runReflect } from "./reflect";
 import { runEvolve } from "./evolve";
 import { runDeepResearch } from "../sense/research";
+
+const SENSOR_TIMEOUT_MS = 90_000; // 90 seconds max per sensor — no sensor can hold the cycle hostage
+
+async function runWithTimeout<T>(
+  fn: () => Promise<T>,
+  name: string,
+  timeoutMs: number
+): Promise<T | null> {
+  const timer = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`${name} timed out after ${timeoutMs / 1000}s`)), timeoutMs)
+  );
+  try {
+    return await Promise.race([fn(), timer]);
+  } catch (err: any) {
+    console.log(`  ⚠️  ${name}: ${err.message}`);
+    return null;
+  }
+}
 
 async function selfCheck() {
   const diagnostics: Record<string, any> = {};
@@ -51,19 +70,33 @@ export async function runCycle() {
     // 0c. Daily self-improvement — reads own code, generates proposals for human review
     await runEvolve();
 
-    // 1. Budget check
-    const budgetStatus = await getBudgetStatus();
-    await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`,
-      ["budget_status", { status: budgetStatus }]);
+    // 1. Process signal queue — clear leads/G2/Upwork signals before sensing adds more
+    const processedCount = await processSignalQueue();
+    if (processedCount > 0) {
+      console.log(`  📬 Processed ${processedCount} signal(s) from queue`);
+    }
 
-    if (budgetStatus === "exhausted") {
-      console.log("⚠️  Budget exhausted for today. Sleeping.");
-      await query(`UPDATE cycles SET ended_at = $1, status = $2 WHERE id = $3`,
-        [new Date(), "budget_exhausted", cycleId]);
+    // 2. Budget check (uses events table via llm.ts, not cycles.inference_cost_usd)
+    const todaySpend = await getTodayCloudSpend();
+    const dailyBudget = await getCloudBudget();
+    await query(`INSERT INTO events (type, payload) VALUES ($1, $2)`, [
+      "budget_status",
+      { status: todaySpend >= dailyBudget ? "exhausted" : "normal", todaySpend, dailyBudget },
+    ]);
+
+    if (todaySpend >= dailyBudget) {
+      console.log(
+        `⚠️  Budget exhausted ($${todaySpend.toFixed(4)} / $${dailyBudget.toFixed(2)}). Sleeping.`
+      );
+      await query(`UPDATE cycles SET ended_at = $1, status = $2 WHERE id = $3`, [
+        new Date(),
+        "budget_exhausted",
+        cycleId,
+      ]);
       return;
     }
 
-    // 2. Sense — sequentially to protect local LLM compute & memory
+    // 3. Sense — sequentially to protect local LLM compute & memory
     console.log("\n👁️  Sensing...");
 
     // 2a. Deep Research - Agentic UI
@@ -79,11 +112,9 @@ export async function runCycle() {
     ];
 
     for (const sensor of sensors) {
-      try {
-        await sensor.fn();
+      const result = await runWithTimeout(sensor.fn, sensor.name, SENSOR_TIMEOUT_MS);
+      if (result !== null) {
         console.log(`  ✅ ${sensor.name}`);
-      } catch (err: any) {
-        console.log(`  ⚠️  ${sensor.name}: ${err.message}`);
       }
     }
     await query(`SELECT pg_notify('organism_events', $1)`, [JSON.stringify({ type: "sense_completed" })]);

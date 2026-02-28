@@ -242,7 +242,7 @@ export async function getCloudSpendSummary(): Promise<{
   };
 }
 
-async function getCloudBudget(): Promise<number> {
+export async function getCloudBudget(): Promise<number> {
   const result = await query(
     `SELECT value FROM policies WHERE key = 'daily_cloud_budget_usd'`
   );

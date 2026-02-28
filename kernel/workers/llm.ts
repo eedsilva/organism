@@ -11,6 +11,7 @@ import { transitionOpportunity } from "../opportunity";
 
 const WORKER_COUNT = parseInt(process.env.LLM_CONCURRENCY || "2", 10);
 let isRunning = false;
+let pollInProgress = false; // Prevents overlapping polls — reset would otherwise re-claim jobs still being processed
 
 async function processJob(job: any) {
     const { id, job_type, input } = job;
@@ -87,10 +88,23 @@ async function processJob(job: any) {
 }
 
 async function pollJobs() {
-    // Grab up to WORKER_COUNT pending jobs, locking them
-    const result = await query(
+    if (pollInProgress) return; // setInterval can fire every 5s; block overlapping polls
+    pollInProgress = true;
+
+    try {
+        // Reset jobs stuck in 'running' for > 10 minutes (process likely crashed).
+        // Safe: we only run when no poll is in progress, so we never reset our own in-flight jobs.
+        await query(`
+      UPDATE llm_jobs 
+      SET status = 'pending', started_at = NULL
+      WHERE status = 'running' 
+        AND started_at < NOW() - INTERVAL '10 minutes'
+    `);
+
+        // Grab up to WORKER_COUNT pending jobs, mark as running
+        const result = await query(
         `UPDATE llm_jobs
-     SET status = 'locked'
+     SET status = 'running', started_at = NOW()
      WHERE id IN (
        SELECT id FROM llm_jobs
        WHERE status = 'pending'
@@ -99,12 +113,15 @@ async function pollJobs() {
        FOR UPDATE SKIP LOCKED
      )
      RETURNING *`,
-        [WORKER_COUNT]
-    );
+            [WORKER_COUNT]
+        );
 
-    const jobs = result.rows;
-    if (jobs.length > 0) {
-        await Promise.all(jobs.map(processJob));
+        const jobs = result.rows;
+        if (jobs.length > 0) {
+            await Promise.all(jobs.map(processJob));
+        }
+    } finally {
+        pollInProgress = false;
     }
 }
 
