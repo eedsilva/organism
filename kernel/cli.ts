@@ -193,8 +193,7 @@ async function cmdDigest() {
 
 async function cmdReflect() {
     console.log(`\n  🔮 Forcing reflection now...`);
-    // Temporarily bypass interval check by calling the inner function directly
-    const { runReflect } = await import("./reflect");
+    const { runReflect } = await import("../meta/reflect");
     await runReflect();
 }
 
@@ -319,8 +318,8 @@ async function handleInput(line: string): Promise<boolean> {
             }
             case "/replicate": {
                 if (!args[0]) { await cmdColony(); break; }
-                const id = args[0]; // expecting a string guid
-                const { spawnChild } = await import("./replicate");
+                const id = args[0];
+                const { spawnChild } = await import("../meta/replicate");
                 const result = await spawnChild(id);
                 console.log(`  ${result}`);
                 break;

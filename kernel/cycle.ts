@@ -12,8 +12,8 @@ import { senseLinkedIn } from "../sense/linkedin";
 import { selectTopOpportunity } from "./decide";
 import { generatePlan } from "./plan";
 import { runDigest } from "./digest";
-import { runReflect } from "./reflect";
-import { runEvolve } from "./evolve";
+import { runReflect } from "../meta/reflect";
+import { runEvolve } from "../meta/evolve";
 import { runDeepResearch } from "../sense/research";
 import { runPriceShockCheck } from "../sense/displacement/priceShock";
 

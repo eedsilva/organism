@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "ts-node -r dotenv/config kernel/heartbeat.ts",
-    "webhook": "ts-node -r dotenv/config kernel/webhook.ts",
-    "talk": "ts-node -r dotenv/config kernel/cli.ts",
+    "webhook": "ts-node -r dotenv/config api/webhook.ts",
+    "talk": "ts-node -r dotenv/config api/cli.ts",
     "mission-control": "cd mission-control && npm run dev",
     "infra:start": "docker compose up -d",
     "infra:stop": "docker compose down -v",
@@ -14,7 +14,9 @@
     "db:migrate:dry": "ts-node -r dotenv/config scripts/migrate.ts --dry-run",
     "db:status": "ts-node -r dotenv/config scripts/migrate.ts --status",
     "db:reset": "docker exec -i organism-postgres psql -U organism -d organism -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' && docker exec -i organism-postgres psql -U organism -d organism < state/schema.sql",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "marketing": "ts-node -r dotenv/config scripts/run-marketing.ts",
+    "dev": "concurrently -n heartbeat,webhook,mission-control -c blue,green,yellow \"npm run start\" \"npm run webhook\" \"npm run mission-control\""
   },
   "keywords": [],
   "author": "",
@@ -40,6 +42,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^25.3.0",
     "@types/pg": "^8.16.0",
+    "concurrently": "^9.2.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

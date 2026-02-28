@@ -24,10 +24,14 @@ async function heartbeat() {
 
 import { startLlmWorkerPool } from "./workers/llm";
 import { startValidationWorkerPool } from "./workers/validation";
+import { startDisplacementBuilderWorker } from "./workers/displacementBuilder";
+import { startMarketingWorker } from "../agents/marketing";
 
 console.log("Organism starting...");
 startLlmWorkerPool();
 startValidationWorkerPool();
+startDisplacementBuilderWorker();
+startMarketingWorker();
 
 setInterval(heartbeat, interval);
 

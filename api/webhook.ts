@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { Client } from "pg";
 import { query } from "../state/db";
+import { handleIngest } from "./ingest";
 
 dotenv.config();
 
@@ -25,6 +26,25 @@ app.use(express.json());
 // Basic health check
 app.get("/health", (req, res) => {
     res.json({ status: "ok", type: "organism_webhook" });
+});
+
+// POST /api/ingest — God Pipe: manual idea ingestion
+app.post("/api/ingest", async (req, res) => {
+    try {
+        const body = req.body as { type?: string; content?: string };
+        const result = await handleIngest({
+            type: body.type === "url" ? "url" : "text",
+            content: body.content ?? "",
+        });
+        if (result.success) {
+            res.json(result);
+        } else {
+            res.status(400).json(result);
+        }
+    } catch (error: any) {
+        console.error("❌ God Pipe ingest error:", error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 // POST /signal/lead/:opportunityId

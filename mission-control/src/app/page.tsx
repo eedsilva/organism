@@ -1,30 +1,49 @@
 import React from "react";
 import { Activity } from "lucide-react";
-import { getSystemMetrics, getPipelineOpportunities, getRecentEvents, getOSIMetrics } from "./actions";
+import {
+  getSystemMetrics,
+  getPipelineOpportunities,
+  getRecentEvents,
+  getOSIMetrics,
+  getDisplacementEvents,
+} from "./actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OpportunityBoard } from "@/components/OpportunityBoard";
 import { OSIPanel } from "@/components/OSIPanel";
+import { SensorPipePanel } from "@/components/SensorPipePanel";
+import { GodPipePanel } from "@/components/GodPipePanel";
+import { MarketingPipePanel } from "@/components/MarketingPipePanel";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  const [metrics, opportunities, events, osiMetrics] = await Promise.all([
+  const [metrics, opportunities, events, osiMetrics, displacementEvents] = await Promise.all([
     getSystemMetrics(),
     getPipelineOpportunities(),
     getRecentEvents(),
     getOSIMetrics(),
+    getDisplacementEvents(),
   ]);
+
+  const recentGod = displacementEvents.filter((e: any) => e.source === "god");
 
   return (
     <main className="flex-1 flex flex-col min-w-0 overflow-y-auto h-screen">
       <header className="h-16 border-b border-[#222] flex items-center px-8 shrink-0 bg-black/50 backdrop-blur-md sticky top-0 z-10">
-        <h2 className="text-lg font-medium text-zinc-200">Pipeline Overview</h2>
+        <h2 className="text-lg font-medium text-zinc-200">Mission Control</h2>
       </header>
 
       <div className="p-8 space-y-8 max-w-7xl">
 
         {/* OSI Panel - Primary V4 metric */}
         <OSIPanel metrics={osiMetrics} />
+
+        {/* Three Pipes: Sensor, God, Marketing */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <SensorPipePanel events={displacementEvents} />
+          <GodPipePanel recentGod={recentGod} />
+          <MarketingPipePanel />
+        </div>
 
         {/* Top Metrics Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

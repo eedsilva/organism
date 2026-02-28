@@ -59,7 +59,6 @@ async function shouldReflect(): Promise<boolean> {
 }
 
 async function gatherContext(): Promise<Record<string, any>> {
-  // Use last 24h or last reflection period — whichever is shorter
   const lastReflection = await query(
     `SELECT created_at FROM reflection_log ORDER BY created_at DESC LIMIT 1`
   );
@@ -135,7 +134,6 @@ async function gatherContext(): Promise<Record<string, any>> {
   const policyMap: Record<string, any> = {};
   for (const row of policies.rows) policyMap[row.key] = row.value;
 
-  // History of past assessments — so brain knows trajectory
   const pastAssessments = await query(
     `SELECT result->>'revenue_assessment' as assessment,
             result->>'summary' as summary,
@@ -261,7 +259,7 @@ export async function runReflect() {
 
   try {
     const ctx = await gatherContext();
-    const { evaluateThesis } = await import("./thesis");
+    const { evaluateThesis } = await import("../kernel/thesis");
     await evaluateThesis();
     try {
       await query(`REFRESH MATERIALIZED VIEW niche_performance`);
@@ -275,20 +273,17 @@ export async function runReflect() {
       return;
     }
 
-    // Print concise summary
     console.log(`\n  📊 ${result.revenue_assessment?.toUpperCase()} — ${result.summary}`);
     console.log(`  ⚠️  ${result.top_concern}`);
     console.log(`  🎯 ${result.strategic_notes}`);
     console.log(`  🔭 Sensing: ${result.sensing_recommendation}`);
 
-    // Show what interval the next reflection will use
     const nextInterval = REFLECTION_INTERVALS[result.revenue_assessment] ?? 1;
     console.log(`  ⏱  Next reflection in: ${nextInterval * 24}h`);
 
     console.log("\n  Updating policies:");
     await applyPolicyUpdates(result.policy_updates);
 
-    // Log to reflection_log
     await query(
       `INSERT INTO reflection_log (period_start, period_end, context, result, revenue_assessment)
        VALUES (NOW() - INTERVAL '${intervalDays} days', NOW(), $1, $2, $3)`,

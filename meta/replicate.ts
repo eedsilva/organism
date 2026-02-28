@@ -1,5 +1,5 @@
 import { query } from "../state/db";
-import { sendPushNotification } from "./notify";
+import { sendPushNotification } from "../kernel/notify";
 import { exec } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -35,7 +35,6 @@ export async function proposeReplication(opportunityId: number): Promise<ChildSp
     if (opp.rows.length === 0) return null;
     const data = opp.rows[0];
 
-    // Build the spec for the new organism
     const spec: ChildSpec = {
         id: crypto.randomBytes(4).toString("hex"),
         niche: data.title,
@@ -43,14 +42,12 @@ export async function proposeReplication(opportunityId: number): Promise<ChildSp
         core_pain: data.title,
         suggested_sensors: ["reddit", "hn", "custom_b2b_scraper"],
         policy_overrides: {
-            // Niche-specific overrides (e.g., lower spend limits while exploring)
             max_daily_spend: 5.00,
             llm_provider: "ollama",
             min_viability_threshold: 60
         }
     };
 
-    // Save the proposal to the DB
     await query(
         `INSERT INTO replication_log (spec_id, source_opportunity_id, status, spec) 
          VALUES ($1, $2, 'proposed', $3)`,
@@ -90,14 +87,12 @@ export async function spawnChild(specId: string) {
         const { pool } = await import("../state/db");
         const client = await pool.connect();
         try {
-            // 1. Setup Child Database Schema
             console.log(`  └─ Bootstrapping neural pathways (schema ${childSchema})...`);
             await client.query(`CREATE SCHEMA IF NOT EXISTS ${childSchema}`);
             await client.query(`SET search_path TO ${childSchema}, public`);
 
             const schemaSql = fs.readFileSync(path.join(__dirname, "../state/schema.sql"), "utf-8");
 
-            // Execute schema directly; it will build tables in childSchema
             const statements = schemaSql.split(/;(?=(?:[^$]*[$][^$]*[$])*[^$]*$)/g);
             for (const stmt of statements) {
                 const trimmed = stmt.trim();
@@ -106,7 +101,6 @@ export async function spawnChild(specId: string) {
                 }
             }
 
-            // 2. Inject the Child Spec (Policy Overrides)
             console.log(`  └─ Encoding specific purpose (Spec)...`);
             for (const [key, val] of Object.entries(spec.policy_overrides)) {
                 const v = typeof val === 'object' ? JSON.stringify(val) : String(val);
@@ -116,10 +110,8 @@ export async function spawnChild(specId: string) {
                 );
             }
 
-            // Also override the niche config so the colony knows its purpose
             await client.query(`INSERT INTO policies (key, value) VALUES ('colony_niche', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [spec.niche]);
 
-            // 3. Register Colony in main registry
             await client.query(`SET search_path TO public`);
             await client.query(
                 `INSERT INTO colonies (id, niche, schema_name, policy_overrides) VALUES ($1, $2, $3, $4)`,
@@ -129,12 +121,10 @@ export async function spawnChild(specId: string) {
             client.release();
         }
 
-        // 4. Spawn Node.js Worker Thread
         console.log(`  └─ Starting dedicated Node.js Worker Thread...`);
         const { Worker } = await import("worker_threads");
 
-        const worker = new Worker(path.resolve(__dirname, "heartbeat.ts"), {
-            // Use ts-node to execute the worker file
+        const worker = new Worker(path.resolve(__dirname, "../kernel/heartbeat.ts"), {
             execArgv: ["-r", "ts-node/register/transpile-only"],
             env: { ...process.env, COLONY_SCHEMA: childSchema }
         });
@@ -147,7 +137,6 @@ export async function spawnChild(specId: string) {
             console.log(`Colony Worker [${childSchema}] exited with code ${code}.`);
         });
 
-        // 5. Mark as spawned
         await query(
             `UPDATE replication_log SET status = 'spawned', child_path = $1 WHERE spec_id = $2`,
             [`WorkerThread:${childSchema}`, specId]

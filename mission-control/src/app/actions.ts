@@ -78,11 +78,32 @@ export async function getOSIMetrics() {
 
 export async function getDisplacementEvents() {
   const result = await query(`
-    SELECT id, type, product_or_role, displacement_strength, viability_score, status, detected_at
+    SELECT id, type, product_or_role, displacement_strength, viability_score, status, source, detected_at
     FROM displacement_events
-    ORDER BY detected_at DESC LIMIT 10
+    ORDER BY detected_at DESC LIMIT 15
   `);
   return result.rows;
+}
+
+export async function getTrustIdentities() {
+  const result = await query(`
+    SELECT id, platform, handle, karma_score, account_age_days, warmup_complete, trust_level, last_active_at
+    FROM trust_identities
+    ORDER BY warmup_complete ASC, karma_score DESC
+  `);
+  return result.rows;
+}
+
+export async function submitGodPipeIngest(type: "text" | "url", content: string) {
+  const baseUrl = process.env.ORGANISM_WEBHOOK_URL || "http://localhost:3001";
+  const res = await fetch(`${baseUrl}/api/ingest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, content }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Ingest failed");
+  return data;
 }
 
 export async function getNichePerformance() {

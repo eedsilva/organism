@@ -16,7 +16,7 @@ import { query } from "../state/db";
  */
 
 // Source directories the organism can read and improve
-const SOURCE_DIRS = ["kernel", "sense", "cognition"];
+const SOURCE_DIRS = ["kernel", "sense", "cognition", "api"];
 const MAX_FILE_SIZE = 8000; // chars — avoid bloating the prompt
 const MAX_PROPOSALS_PER_RUN = 3; // don't flood the operator
 
@@ -72,7 +72,6 @@ async function generateProposals(
     sourceFiles: Array<{ file: string; code: string }>,
     perfContext: Record<string, any>
 ): Promise<any[]> {
-    // Summarize files for the prompt (don't dump all code — too long)
     const fileSummary = sourceFiles
         .map(f => `--- ${f.file} (${f.code.length} chars) ---\n${f.code}`)
         .join("\n\n");
@@ -133,7 +132,6 @@ async function storeProposals(proposals: any[]): Promise<number> {
     for (const p of proposals) {
         if (!p.file_path || !p.current_code || !p.proposed_code) continue;
 
-        // Verify the current_code actually exists in the file (prevent hallucinations)
         let fileContent = "";
         try {
             fileContent = fs.readFileSync(p.file_path, "utf8");
@@ -164,7 +162,6 @@ async function storeProposals(proposals: any[]): Promise<number> {
 // ── Main entry ────────────────────────────────────────────────────────────────
 
 export async function runEvolve() {
-    // Only run once per day maximum
     const recentRun = await query(
         `SELECT id FROM events WHERE type = 'evolve_complete' AND DATE(created_at) = CURRENT_DATE LIMIT 1`
     );

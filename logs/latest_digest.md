@@ -23,7 +23,7 @@
 
   CYCLE HEALTH (24h)
 ──────────────────────────────────────────────────
-  Success: 0  Failed: 0  Exhausted: 0
+  Success: 0  Failed: 2  Exhausted: 0
 
 ══════════════════════════════════════════════════
   DO THIS NOW
