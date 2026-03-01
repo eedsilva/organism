@@ -2,6 +2,7 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Megaphone, User, CheckCircle } from "lucide-react";
 import { getTrustIdentities } from "@/app/actions";
+import { MarketingAgentLog } from "./MarketingAgentLog";
 
 export async function MarketingPipePanel() {
   const identities = await getTrustIdentities();
@@ -45,6 +46,7 @@ export async function MarketingPipePanel() {
             ))}
           </div>
         )}
+        <MarketingAgentLog />
       </CardContent>
     </Card>
   );

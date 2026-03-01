@@ -468,6 +468,18 @@ Provide valid JSON only:
     const templateKey = `${archetype}_TEMPLATE` as keyof typeof templates;
     const archetypeTemplate = templates[templateKey] || {};
 
+    let color_primary = "#6366f1";
+    let color_accent = "#8b5cf6";
+    try {
+      const stylePrompt = `
+You are a UI expert. Pick a vibrant, premium 2-color hex palette for a tool targeting: ${displacementEvent.affected_persona_niche || 'tech professionals'}.
+Respond ONLY with JSON: {"color_primary": "#HEX", "color_accent": "#HEX"}`;
+      const styleRes = await callBrain(stylePrompt, "chassis styling", false, "chat");
+      const styleParsed = JSON.parse(styleRes.replace(/```json|```/g, "").trim());
+      if (styleParsed.color_primary) color_primary = styleParsed.color_primary;
+      if (styleParsed.color_accent) color_accent = styleParsed.color_accent;
+    } catch (e) { }
+
     const config = {
       product_name: toolSpec.tool_name?.toLowerCase().replace(/\s/g, "") || "tool",
       headline: toolSpec.headline || `Free ${displacementEvent.product_or_role} tool`,
@@ -481,6 +493,10 @@ Provide valid JSON only:
       share_hook: toolSpec.share_hook,
       lead_webhook_url: `http://localhost:3001/signal/lead/0`,
       opportunity_id: 0,
+      color_primary,
+      color_accent,
+      cta_text: "Get Free Access",
+      social_proof: "Join 100+ others taking action today"
     };
     fs.writeFileSync(path.join(folderPath, "chassis.config.json"), JSON.stringify(config, null, 2));
 

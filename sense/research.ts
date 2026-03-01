@@ -23,12 +23,13 @@ CURRENT TRENDING TOPICS on Google Trends (use these as inspiration):
 ${trendContext}
 
 TASK:
-1. Based on the trending topics above, identify ONE highly specific B2B niche where professionals are furious about broken manual workflows.
-2. Generate EXACTLY 5 short search queries (MAX 8 words each) written as frustrated Reddit/Twitter complaints. Keep them concise and keyword-rich — these will be used directly as search engine queries.
+1. Based on the trending topics above, identify ONE highly specific B2B niche where professionals are frustrated with manual workflows.
+2. Generate EXACTLY 5 search queries (MAX 3 words each) that are broad, generic keywords relating to that niche's core workflows.
+DO NOT use natural language like "I hate" or "broken". Reddit search fails on long phrases. Keep them generic to cast a wide net.
 
 OUTPUT FORMAT:
-Respond with ONLY a raw JSON array of exactly 5 short strings. No markdown, no code blocks, no explanation. Example:
-["manual invoice reconciliation nightmare", "prior auth approval process broken", "scheduling software still not automated", "why is CRM data entry still manual", "freight tracking spreadsheet madness"]`;
+Respond with ONLY a raw JSON array of exactly 5 strings. No markdown, no code blocks. Example:
+["invoice reconciliation", "inventory tracking", "patient scheduling", "payroll sync", "freight logistics"]`;
 }
 
 async function runWithChatGPT(authFile: string, prompt: string): Promise<string[]> {

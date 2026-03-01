@@ -15,7 +15,7 @@
     "db:status": "ts-node -r dotenv/config scripts/migrate.ts --status",
     "db:reset": "docker exec -i organism-postgres psql -U organism -d organism -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' && docker exec -i organism-postgres psql -U organism -d organism < state/schema.sql",
     "typecheck": "tsc --noEmit",
-    "marketing": "ts-node -r dotenv/config scripts/run-marketing.ts",
+    "agent:marketing": "ts-node -r dotenv/config scripts/agent-marketing.ts",
     "dev": "concurrently -n heartbeat,webhook,mission-control -c blue,green,yellow \"npm run start\" \"npm run webhook\" \"npm run mission-control\""
   },
   "keywords": [],
